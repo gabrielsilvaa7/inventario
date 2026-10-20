@@ -36,14 +36,72 @@ function initBridge(){const url=window.INVENTARIO_CONFIG&&window.INVENTARIO_CONF
   }catch(err){$('connectingMessage').textContent='Configuração inválida: '+err.message;return;}
   setTimeout(()=>{if(!state.ready){$('connectingMessage').textContent='Não foi possível carregar o Apps Script. Confirme a implantação, a permissão "Qualquer pessoa", WEB_ORIGIN e o URL /exec. Verifique também bloqueios de iframe/cookies do navegador.';}},25000);
 }
-async function enterApp(){show('appPage');$('accountLabel').textContent=state.usuario.nome+' · '+state.usuario.perfil;applyRole();await refreshContext();if(canSupervise()){await refreshDashboard();}if(state.usuario.perfil==='ADMIN')await refreshUsers();}
+async function enterApp(){show('appPage');$('accountLabel').textContent=state.usuario.nome+' · '+state.usuario.perfil;applyRole();await refreshContext();if(canSupervise()){await refreshDashboard();}if(state.usuario.perfil==='ADMIN'){await refreshUsers();await refreshEnvironment();}}
 function canSupervise(){return state.usuario&&['ADMIN','SUPERVISOR'].includes(state.usuario.perfil);}
 function applyRole(){document.querySelectorAll('.supervisor-only').forEach(n=>n.classList.toggle('hidden-role',!canSupervise()));document.querySelectorAll('.admin-only').forEach(n=>n.classList.toggle('hidden-role',state.usuario.perfil!=='ADMIN'));}
 function switchTab(tab){if((tab==='painel'||tab==='supervisao')&&!canSupervise())return;if(tab==='usuarios'&&state.usuario?.perfil!=='ADMIN')return;state.tab=tab;
   document.querySelectorAll('.tab').forEach(n=>n.classList.toggle('active',n.dataset.tab===tab));document.querySelectorAll('.page').forEach(n=>n.classList.toggle('active',n.id==='tab-'+tab));}
-async function refreshContext(){state.context=await api('carregarContexto');$('inventoryName').textContent=state.context.inventario.nome;
+async function refreshContext(){state.context=await api('carregarContexto');$('inventoryName').textContent=state.context.inventario.nome;renderModeBadge(state.context.modo);
   const prev=$('sectorSelect').value;$('sectorSelect').innerHTML='<option value="">Selecione um setor...</option>'+state.context.setores.map(x=>`<option value="${safe(x.centro+'|'+x.deposito)}">Centro ${safe(x.centro)} · Depósito ${safe(x.deposito)} · R${x.numero} ${safe(x.status)}</option>`).join('');
   if([...$('sectorSelect').options].some(x=>x.value===prev))$('sectorSelect').value=prev;
+}
+function renderModeBadge(mode){
+  const badge=$('modeBadge');badge.textContent='Modo: '+(mode==='OFICIAL'?'OFICIAL':'TESTE');
+  badge.className='mode-badge '+(mode==='OFICIAL'?'mode-official':'mode-test');
+}
+function paintEnvironment(data){
+  const oficial=data.modo==='OFICIAL';
+  $('adminModeBadge').textContent=data.modo;
+  $('adminModeBadge').className='mode-badge '+(oficial?'mode-official':'mode-test');
+  $('testModeButton').classList.toggle('active',!oficial);
+  $('officialModeButton').classList.toggle('active',oficial);
+  $('testModeButton').setAttribute('aria-pressed',String(!oficial));
+  $('officialModeButton').setAttribute('aria-pressed',String(oficial));
+  $('testModeButton').disabled=oficial;
+  $('officialModeButton').disabled=oficial||data.limpeza_pendente;
+  $('clearTestDataButton').disabled=oficial;
+  $('modeInfo').textContent=oficial
+    ?'INVENTÁRIO OFICIAL ATIVO. Nenhum registro pode ser apagado pela função de limpeza. Não é possível voltar ao modo TESTE.'
+    :data.limpeza_pendente
+    ?'Limpeza interrompida. Execute novamente a limpeza para liberar as operações.'
+    :'MODO TESTE ATIVO. Você pode simular as três rodadas e reiniciar a contagem quantas vezes precisar.';
+  const n=data.quantidades;
+  $('environmentMetrics').innerHTML=[['Contagens',n.contagens],['Resultados',n.resultados],['Aprovações',n.aprovacoes],['Rodadas',n.rodadas]].map(x=>`<div><strong>${num(x[1])}</strong><span>${safe(x[0])}</span></div>`).join('');
+  renderModeBadge(data.modo);
+}
+async function refreshEnvironment(){
+  if(state.usuario?.perfil!=='ADMIN')return;
+  try{paintEnvironment(await api('estadoAmbiente'));}catch(err){toast('Administração: '+err.message,'error');}
+}
+async function clearTestData(){
+  if(state.usuario?.perfil!=='ADMIN')return;
+  if(!confirm('Deseja APAGAR todas as contagens e rodadas de teste? Esta operação não pode ser desfeita. A base SAP e os usuários serão preservados.'))return;
+  const confirmacao=prompt('Para confirmar a exclusão de todos os registros de teste, digite exatamente: APAGAR TESTES');
+  if(confirmacao===null)return;
+  if(confirmacao!=='APAGAR TESTES'){toast('Confirmação incorreta. Nenhum dado foi apagado.','error');return;}
+  const b=$('clearTestDataButton');btnBusy(b,true,'Limpando...');
+  try{
+    const r=await api('limparDadosTeste',{confirmacao},180000);
+    state.product=null;state.requestId=null;resetProduct();$('lastSaved').hidden=true;
+    toast('Dados de teste apagados. '+r.setores_restaurados+' setores restaurados na rodada 1.','success');
+    await refreshContext();await refreshDashboard();await refreshEnvironment();
+  }catch(err){toast('Limpeza não concluída: '+err.message,'error');await refreshEnvironment();}
+  finally{btnBusy(b,false);}
+}
+async function startOfficialInventory(){
+  if(state.usuario?.perfil!=='ADMIN')return;
+  const ok=confirm('ATENÇÃO: ao iniciar o modo OFICIAL, nunca mais será possível limpar registros deste inventário pelo site. Confirme que a base SAP, o corte e a equipe estão validados. Deseja continuar?');
+  if(!ok)return;
+  const confirmacao=prompt('Esta alteração é PERMANENTE. Digite exatamente: INICIAR INVENTARIO OFICIAL');
+  if(confirmacao===null)return;
+  if(confirmacao!=='INICIAR INVENTARIO OFICIAL'){toast('Confirmação incorreta; o ambiente continua em TESTE.','error');return;}
+  const b=$('officialModeButton');btnBusy(b,true,'Ativando...');
+  try{
+    await api('iniciarInventarioOficial',{confirmacao});
+    toast('Modo OFICIAL ativado. A limpeza de dados foi bloqueada permanentemente.','success');
+    await refreshContext();await refreshDashboard();await refreshEnvironment();
+  }catch(err){toast(err.message,'error');await refreshEnvironment();}
+  finally{btnBusy(b,false);}
 }
 function currentSector(){const val=$('sectorSelect').value;if(!val)throw Error('Selecione Centro e Depósito.');const [centro,deposito]=val.split('|');return {centro,deposito};}
 function resetProduct(){state.product=null;state.requestId=null;$('saveCount').disabled=true;$('countUnit').textContent='';$('productInfo').className='product-card muted';$('productInfo').textContent='Busque um produto no centro e depósito selecionados.';}
@@ -109,4 +167,7 @@ $('refreshDashboard').addEventListener('click',refreshDashboard);
 $('sectorsBody').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.close)doClose(b.dataset.close);if(b.dataset.open)doOpen(b.dataset.open);});
 $('approvalsBody').addEventListener('click',e=>{const b=e.target.closest('button');if(b?.dataset.approve)doApprove(b.dataset.approve);});
 $('userForm').addEventListener('submit',doCreateUser);$('saveSettings').addEventListener('click',saveSettings);
+$('testModeButton').addEventListener('click',()=>toast('O modo TESTE já está ativo.','success'));
+$('officialModeButton').addEventListener('click',startOfficialInventory);
+$('clearTestDataButton').addEventListener('click',clearTestData);
 initBridge();
