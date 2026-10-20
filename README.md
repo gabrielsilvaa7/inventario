@@ -19,6 +19,27 @@ Aplicação de inventário físico industrial com endereço **Rua / Zona / Posi�
 - Log de auditoria: login, tentativa malsucedida, lançamento, encerramento/abertura, aprovação, criação de usuário, mudança de configuração.
 - Painel de supervisão e filtro de endereço. Atualiza ao recarregar a página ou clicar em **Atualizar**.
 
+## NOVO — Modo TESTE e OFICIAL (Administração)
+
+No menu **Administração** (perfil **ADMIN**), existem as opções **Modo TESTE** e **Modo OFICIAL**, além do botão **Apagar registros de teste**.
+
+- **TESTE (inicial):** simule contagens, localizações, rodadas 1/2/3 e aprovações livremente. O administrador pode usar a limpeza após confirmar digitando `APAGAR TESTES`.
+- **Limpeza:** elimina os dados simulados em `CONTAGENS`, `RESULTADOS`, `APROVACOES` e `RODADAS`, restabelece a Rodada 1 de cada Centro + Depósito e limpa a auditoria dos testes, guardando um evento da limpeza. Preserva `BASE_ESTOQUE`, `INVENTARIOS`, `USUARIOS`, `SESSOES` e `CONFIG`. Não modifica a planilha SAP original.
+- **OFICIAL (permanente):** exige base de operações limpa e confirmação `INICIAR INVENTARIO OFICIAL`. Depois disso, o backend rejeita todas as tentativas de limpeza e **não permite voltar a TESTE**. As contagens e rodadas oficiais continuam funcionando normalmente.
+- **Permissões:** apenas ADMIN consulta o controle de ambiente, ativa OFICIAL ou apaga dados de TESTE. O modo está nas Propriedades privadas do Apps Script, não no JavaScript do site.
+
+**Aviso importante:** a proibição de exclusão vale para as funções do site. Quem tiver acesso de **editor** direto ao Google Sheets ainda poderá alterar/apagar células manualmente. Restrinja esse acesso para operação oficial. Consulte `docs/SEGURANCA.md`.
+
+### Atualização obrigatória para a implantação já existente
+
+1. No projeto Apps Script **Inventário SAP — Backend**, substitua integralmente o código de `Code.gs` e `Bridge.html` pelos arquivos atualizados deste GitHub. Salve.
+2. Em **Implantar > Gerenciar implantações**, edite **a implantação existente** do Aplicativo da Web (ícone de lápis).
+3. Em **Versão**, selecione **Nova versão** e clique em **Implantar**. Mantenha **Executar como: Eu**, e mantenha a configuração de acesso aprovada pela TI.
+4. Use a mesma URL `/exec` já configurada em `config.js`; se a implantação fornecer URL diferente, atualize `config.js`.
+5. Atualize o GitHub Pages (Ctrl+F5), entre com usuário ADMIN e confirme **Modo TESTE** e o botão **Apagar registros de teste**.
+
+**NÃO execute `instalarProjeto` novamente.** A base existente já foi criada; as novas funções são compatíveis com ela. A propriedade `INVENTARIO_MODO` pode não existir em projetos instalados antes da atualização: nesse caso, o backend assume TESTE até ativação OFICIAL.
+
 ## Arquivos
 
 ```
