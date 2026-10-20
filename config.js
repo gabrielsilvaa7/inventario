@@ -2,5 +2,5 @@
  * Nunca coloque senhas, tokens, IDs de planilhas privadas ou segredos aqui.
  */
 window.INVENTARIO_CONFIG = {
-  appsScriptUrl: 'COLE_AQUI_O_URL_DA_WEB_APP_TERMINADO_EM_EXEC'
+  appsScriptUrl: 'https://script.google.com/macros/s/AKfycbyDFEuDTVkSpFqzK2kdcZuL8D_P6zO7pxz7jz7gttuXMffLqgXOV0nzhIlmCEEeVGQ8Gg/exec'
 };
