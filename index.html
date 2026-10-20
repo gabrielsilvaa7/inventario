@@ -30,7 +30,7 @@
     <header class="topbar">
       <div class="header-wrap">
         <div class="brand"><span class="brand-mark">▦</span><div><strong>Inventário SAP</strong><small id="inventoryName">Inventário físico</small></div></div>
-        <div class="header-actions"><span id="accountLabel" class="account"></span><button id="logoutButton" class="btn outline small" type="button">Sair</button></div>
+        <div class="header-actions"><span id="modeBadge" class="mode-badge" aria-live="polite">Modo: —</span><span id="accountLabel" class="account"></span><button id="logoutButton" class="btn outline small" type="button">Sair</button></div>
       </div>
     </header>
     <div class="layout">
@@ -38,7 +38,7 @@
         <button type="button" class="tab active" data-tab="contagem">Contagem</button>
         <button type="button" class="tab supervisor-only" data-tab="painel">Dashboard</button>
         <button type="button" class="tab supervisor-only" data-tab="supervisao">Supervisão</button>
-        <button type="button" class="tab admin-only" data-tab="usuarios">Usuários</button>
+        <button type="button" class="tab admin-only" data-tab="usuarios">Administração</button>
       </nav>
 
       <section class="page active" id="tab-contagem">
@@ -99,13 +99,25 @@
       </section>
 
       <section class="page" id="tab-usuarios">
-        <div class="heading"><div><div class="eyebrow">ADMINISTRAÇÃO</div><h2>Usuários</h2><p>Crie as credenciais dos contadores e supervisores.</p></div></div>
+        <div class="heading"><div><div class="eyebrow">ADMINISTRAÇÃO</div><h2>Administração</h2><p>Defina o ambiente de operação e gerencie as credenciais da equipe.</p></div></div>
+        <article class="panel" id="environmentPanel">
+          <div class="panel-head"><div><h3>Modo de operação</h3><p class="hint">Escolha o ambiente do inventário. Apenas administradores podem alterar o modo ou limpar dados de teste.</p></div><span class="mode-badge mode-test" id="adminModeBadge">TESTE</span></div>
+          <div class="mode-choice" role="group" aria-label="Modo de operação">
+            <button type="button" id="testModeButton" class="mode-option active" aria-pressed="true"><strong>Modo TESTE</strong><small>Simular contagens e todas as rodadas</small></button>
+            <button type="button" id="officialModeButton" class="mode-option" aria-pressed="false"><strong>Modo OFICIAL</strong><small>Inventário real · limpeza bloqueada</small></button>
+          </div>
+          <p id="modeInfo" class="mode-description" aria-live="polite">Carregando status do ambiente...</p>
+          <div class="environment-metrics" id="environmentMetrics"></div>
+          <div class="test-cleanup"><div><strong>Limpar registros de teste</strong><p class="hint">Remove contagens, resultados, aprovações e rodadas simuladas. Restaura a primeira rodada de cada centro e depósito; preserva a base SAP e os usuários.</p></div><button type="button" class="btn danger" id="clearTestDataButton" disabled>Apagar registros de teste</button></div>
+          <p class="hint">Ao ativar o modo OFICIAL, a alteração é permanente neste inventário e o backend bloqueia a limpeza, mesmo que alguém tente executar a função diretamente. Para começar oficialmente, os registros de teste devem ter sido limpos.</p>
+        </article>
+        <h3>Gerenciar usuários</h3>
         <div class="two-col">
           <article class="panel"><h3>Novo usuário</h3><form id="userForm" class="stack"><label>Usuário<input id="newUsername" placeholder="JOAO.SILVA" minlength="3" required></label><label>Nome<input id="newName" required></label><label>Perfil<select id="newRole"><option value="CONTADOR">Contador</option><option value="SUPERVISOR">Supervisor</option><option value="ADMIN">Administrador</option></select></label><label>Senha inicial<input id="newPassword" type="password" minlength="10" required autocomplete="new-password"></label><button class="btn primary" type="submit">Cadastrar usuário</button></form></article>
           <article class="panel"><h3>Equipe autorizada</h3><div id="userList" class="people-list"></div></article>
         </div>
       </section>
-      <footer>Inventário SAP · GitHub Pages + Google Apps Script · Versão de testes</footer>
+      <footer>Inventário SAP · GitHub Pages + Google Apps Script · Modo de operação controlado pelo administrador</footer>
     </div>
   </main>
   <script src="config.js"></script><script src="app.js"></script>
