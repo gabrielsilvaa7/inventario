@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><base target="_top"><meta charset="utf-8"></head>
+<body style="margin:0;background:transparent;color:transparent;font-size:1px">
+<script>
+'use strict';
+// Valores injetados exclusivamente do servidor Apps Script, nunca de mensagens recebidas.
+const ALLOWED_ORIGIN = <?!= originJson ?>;
+const CHANNEL = <?!= channelJson ?>;
+const METHODS = new Set([
+  'ping','entrar','sair','sessaoAtual','carregarContexto','consultarProduto',
+  'salvarContagem','painel','encerrarRodada','abrirProximaRodada',
+  'aprovarDivergencia','listarUsuarios','cadastrarUsuario','atualizarConfiguracao'
+]);
+function reply(payload){window.top.postMessage({app:'inventario-sap',channel:CHANNEL,...payload},ALLOWED_ORIGIN);}
+window.addEventListener('message',event=>{
+  if(event.origin!==ALLOWED_ORIGIN||event.source!==window.top)return;
+  const msg=event.data;
+  if(!msg||msg.app!=='inventario-sap'||msg.channel!==CHANNEL||msg.type!=='request')return;
+  if(!METHODS.has(msg.method)){reply({type:'response',id:msg.id,ok:false,error:'Método não permitido.'});return;}
+  try{
+    google.script.run
+      .withSuccessHandler(result=>reply({type:'response',id:msg.id,ok:true,result}))
+      .withFailureHandler(error=>reply({type:'response',id:msg.id,ok:false,error:error&&error.message?error.message:String(error)}))
+      [msg.method](msg.payload||{});
+  }catch(err){reply({type:'response',id:msg.id,ok:false,error:err.message});}
+});
+reply({type:'ready'});
+</script>
+</body>
+</html>
