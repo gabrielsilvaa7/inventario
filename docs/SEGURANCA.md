@@ -13,3 +13,12 @@
 11. **Conformidade**: valide políticas da empresa, LGPD, retenção, tratamento de informação comercial/fiscal e autorização para serviços pessoais Google/GitHub antes do uso produtivo.
 12. **Escopo SAP**: confirme se bloqueado, trânsito, transferência, depósitos virtuais ou estoques especiais pertencem à contagem. Não aprove ajuste sem processo formal SAP e conciliação.
 13. **Fechamento multi-linhas**: operação no Sheets não é ACID. Para produção, desenvolver proteção contra execução interrompida, estado intermediário e recuperação automática, ou migrar resultados/transações para banco transacional.
+
+## Controle TESTE / OFICIAL
+
+- **Somente ADMIN** pode consultar o gerenciamento de ambiente, limpar dados de teste ou ativar o modo oficial. O backend valida sessão e perfil mesmo em chamadas diretas, sem depender da interface.
+- O modo fica em `INVENTARIO_MODO` nas **Propriedades do script**, não na planilha pública ou no JavaScript. Projetos existentes sem a propriedade são tratados como `TESTE` para migração.
+- A transição `TESTE → OFICIAL` exige frase exata, não aceita dados operacionais nem rodadas encerradas e **não oferece retorno ao modo TESTE**. Toda chamada a `limparDadosTeste` é rejeitada quando `INVENTARIO_MODO=OFICIAL`.
+- A limpeza de TESTES é destrutiva: zera `CONTAGENS`, `RESULTADOS`, `APROVACOES`, `RODADAS` e o histórico de testes em `AUDITORIA`, reinicializa a Rodada 1 e registra evento de limpeza. Preserva `BASE_ESTOQUE`, `INVENTARIOS`, `USUARIOS`, `SESSOES` e `CONFIG`. Faça backup do banco se quiser guardar simulações.
+- A propriedade `LIMPEZA_EM_ANDAMENTO` bloqueia novas contagens e operações de fechamento quando uma limpeza é interrompida; o administrador deve repetir a limpeza para liberar a operação.
+- **Limite incontornável de Google Sheets:** quem tiver permissão de edição na planilha ainda pode apagar linhas diretamente, inclusive no modo OFICIAL, ou um proprietário pode modificar o Apps Script / propriedades. Para inventário oficial, **não compartilhe edição da planilha com os contadores**, restrinja proprietários/editores e considere proteção de intervalos e backups/controles da TI. O bloqueio implementado vale para as ações do aplicativo, não impede edição direta por quem controla a planilha.
