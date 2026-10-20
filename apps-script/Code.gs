@@ -17,6 +17,8 @@ const SCHEMA = {
   AUDITORIA: ['evento_id','data_hora','usuario','acao','entidade','referencia','detalhes']
 };
 const DEFAULT_CONFIG = {PERMITIR_MESMO_CONTADOR_ENTRE_RODADAS:'NAO'};
+// O modo oficial é irreversível pela aplicação. Fonte da verdade: Propriedades do script (privadas).
+const MODO_TESTE = 'TESTE', MODO_OFICIAL = 'OFICIAL';
 const SESSION_HOURS = 8;
 const PASSWORD_ROUNDS = 5000; // MVP: hash salgado + segredo servidor; auditar autenticação antes de produção crítica.
 
@@ -50,6 +52,72 @@ function targetForRound_(round,base,results){if(Number(round.numero)===1)return 
 function inventoryBase_(inv,center,depot){return table_('BASE_ESTOQUE').filter(x=>x.inventario_id===inv&&(!center||str_(x.centro)===str_(center))&&(!depot||str_(x.deposito)===str_(depot)));}
 function latestResultsMap_(results){const m=new Map();for(const r of results){const k=normalizeKey_(r.codigo,r.centro,r.deposito),prev=m.get(k);if(!prev||Number(r.numero)>Number(prev.numero))m.set(k,r);}return m;}
 function getConfig_(k){const r=table_('CONFIG').find(x=>x.chave===k);return r?str_(r.valor):str_(DEFAULT_CONFIG[k]);}
+function modoOperacao_(){
+  const value=norm_(prop_('INVENTARIO_MODO')||MODO_TESTE);
+  if(![MODO_TESTE,MODO_OFICIAL].includes(value))throw Error('Modo do inventário inválido. Consulte a administração.');
+  return value;
+}
+function exigirSemLimpeza_(){
+  if(prop_('LIMPEZA_EM_ANDAMENTO')==='SIM')throw Error('Limpeza de testes pendente. O administrador deve concluí-la antes de continuar.');
+}
+function resumoAmbiente_(){
+  const nomes=['CONTAGENS','RESULTADOS','APROVACOES','RODADAS'];
+  const quantidades=Object.fromEntries(nomes.map(nome=>[nome.toLowerCase(),table_(nome).length]));
+  return {modo:modoOperacao_(),limpeza_pendente:prop_('LIMPEZA_EM_ANDAMENTO')==='SIM',
+    quantidades,rodadas_superiores:table_('RODADAS').filter(x=>Number(x.numero)>1||x.status!=='ABERTA').length};
+}
+/** Consulta administrativa; não expõe senhas, tokens ou dados do SAP. */
+function estadoAmbiente(d){const u=auth_(d.token);requireAdmin_(u);return resumoAmbiente_();}
+/** Exclusivamente modo TESTE: apaga dados operacionais de simulação e restaura rodada 1.
+ * Conserva BASE_ESTOQUE, INVENTARIOS, USUARIOS, SESSOES e CONFIG.
+ * Em caso de interrupção, bloqueia novas operações até nova chamada de limpeza.
+ */
+function limparDadosTeste(d){return withLock_(()=>{
+  const u=auth_(d.token);requireAdmin_(u);
+  if(modoOperacao_()!==MODO_TESTE)throw Error('Limpeza proibida: o inventário já está em modo OFICIAL.');
+  if(str_(d.confirmacao)!=='APAGAR TESTES')throw Error('Confirmação inválida. Digite APAGAR TESTES.');
+  const inv=activeInventory_(),base=inventoryBase_(inv.inventario_id);
+  if(!base.length)throw Error('Não há base SAP disponível para reabrir a rodada inicial.');
+  const antes=resumoAmbiente_();
+  const setores=[...new Set(base.map(x=>str_(x.centro)+'|'+str_(x.deposito)))].sort();
+  props_().setProperty('LIMPEZA_EM_ANDAMENTO','SIM');
+  // Limpa os lançamentos de teste e todas as suas dependências, preservando cabeçalhos.
+  for(const nome of ['CONTAGENS','RESULTADOS','APROVACOES','RODADAS']){
+    const sheet=sh_(nome),last=sheet.getLastRow();
+    if(last>1)sheet.getRange(2,1,last-1,SCHEMA[nome].length).clearContent();
+  }
+  appendMany_('RODADAS',setores.map(item=>{
+    const divisor=item.indexOf('|'),centro=item.slice(0,divisor),deposito=item.slice(divisor+1);
+    return [uuid_(),inv.inventario_id,centro,deposito,1,'ABERTA',iso_(),'',''];
+  }));
+  // Eventos gerados nos testes também são descartados; preserva registro do reset atual.
+  const log=sh_('AUDITORIA'),last=log.getLastRow();
+  if(last>1)log.getRange(2,1,last-1,SCHEMA.AUDITORIA.length).clearContent();
+  writeAudit_(u.usuario,'AMBIENTE_TESTE_LIMPO','INVENTARIO',inv.inventario_id,
+    {contagens:antes.quantidades.contagens,resultados:antes.quantidades.resultados,
+     aprovacoes:antes.quantidades.aprovacoes,rodadas:antes.quantidades.rodadas,
+     setores_restaurados:setores.length});
+  props_().deleteProperty('LIMPEZA_EM_ANDAMENTO');
+  return {ok:true,...resumoAmbiente_(),setores_restaurados:setores.length};
+});}
+/** Transição permanente TESTE -> OFICIAL. Nunca há método inverso. */
+function iniciarInventarioOficial(d){return withLock_(()=>{
+  const u=auth_(d.token);requireAdmin_(u);
+  if(modoOperacao_()!==MODO_TESTE)throw Error('O inventário já está no modo OFICIAL; não pode ser revertido.');
+  exigirSemLimpeza_();
+  if(str_(d.confirmacao)!=='INICIAR INVENTARIO OFICIAL')throw Error('Confirmação inválida. Digite INICIAR INVENTARIO OFICIAL.');
+  const resumo=resumoAmbiente_();
+  if(resumo.quantidades.contagens||resumo.quantidades.resultados||resumo.quantidades.aprovacoes||resumo.rodadas_superiores)
+    throw Error('Há dados ou rodadas de teste. Utilize Limpar registros de teste antes de ativar o modo OFICIAL.');
+  if(!resumo.quantidades.rodadas)throw Error('Nenhuma rodada inicial está disponível.');
+  // Marcar OFICIAL antes de gerar o log para priorizar bloqueio irreversível mesmo se a auditoria falhar.
+  props_().setProperty('INVENTARIO_MODO',MODO_OFICIAL);
+  const inv=activeInventory_();
+  writeAudit_(u.usuario,'MODO_OFICIAL_ATIVADO','INVENTARIO',inv.inventario_id,
+    {modo_anterior:MODO_TESTE,modo_novo:MODO_OFICIAL});
+  return {ok:true,modo:MODO_OFICIAL};
+});}
+
 
 /** Execute MANUALMENTE no editor Apps Script ANTES de publicar a Web App.
  * Propriedades: SAP_SOURCE_ID, WEB_ORIGIN, ADMIN_USER, ADMIN_PASSWORD.
@@ -72,6 +140,7 @@ function instalarProjeto(){
   const salt=random_();appendMany_('USUARIOS',[[uuid_(),user,'Administrador inicial','ADMIN','SIM',salt,passHash_(password,salt),iso_()]]);
   props_().deleteProperty('ADMIN_PASSWORD');
   const imported=importarSAPInterno_(sourceId,source);
+  props_().setProperty('INVENTARIO_MODO',MODO_TESTE);
   writeAudit_(user,'INSTALAR_PROJETO','INVENTARIO',imported.inventario_id,{importados:imported.itens,consolidados:imported.duplicados});
   Logger.log('INSTALAÇÃO CONCLUÍDA. Banco: '+db.getUrl());
   return {banco_url:db.getUrl(),...imported};
@@ -117,9 +186,9 @@ function sair(d){return withLock_(()=>{
   writeAudit_(u.usuario,'LOGOUT','SESSAO',u.usuario,{});return {ok:true};
 });}
 function sessaoAtual(d){return {usuario:auth_(d.token),inventario:activeInventory_().nome};}
-function carregarContexto(d){const u=auth_(d.token),inv=activeInventory_();const rounds=table_('RODADAS').filter(r=>r.inventario_id===inv.inventario_id);const grouping=new Map();for(const r of rounds){const k=r.centro+'|'+r.deposito,prev=grouping.get(k);if(!prev||Number(r.numero)>Number(prev.numero))grouping.set(k,r);}
-  return {usuario:u,inventario:{id:inv.inventario_id,nome:inv.nome},setores:[...grouping.values()].map(r=>({centro:String(r.centro),deposito:String(r.deposito),rodada_id:r.rodada_id,numero:Number(r.numero),status:r.status})).sort((a,b)=>a.centro.localeCompare(b.centro)||a.deposito.localeCompare(b.deposito))};}
-function consultarProduto(d){const u=auth_(d.token),inv=activeInventory_(),center=str_(d.centro),depot=str_(d.deposito),code=str_(d.codigo);
+function carregarContexto(d){exigirSemLimpeza_();const u=auth_(d.token),inv=activeInventory_();const rounds=table_('RODADAS').filter(r=>r.inventario_id===inv.inventario_id);const grouping=new Map();for(const r of rounds){const k=r.centro+'|'+r.deposito,prev=grouping.get(k);if(!prev||Number(r.numero)>Number(prev.numero))grouping.set(k,r);}
+  return {usuario:u,inventario:{id:inv.inventario_id,nome:inv.nome},modo:modoOperacao_(),setores:[...grouping.values()].map(r=>({centro:String(r.centro),deposito:String(r.deposito),rodada_id:r.rodada_id,numero:Number(r.numero),status:r.status})).sort((a,b)=>a.centro.localeCompare(b.centro)||a.deposito.localeCompare(b.deposito))};}
+function consultarProduto(d){exigirSemLimpeza_();const u=auth_(d.token),inv=activeInventory_(),center=str_(d.centro),depot=str_(d.deposito),code=str_(d.codigo);
   const rounds=sector_(inv.inventario_id,center,depot),r=rounds[rounds.length-1];if(!r||r.status!=='ABERTA')throw Error('Não há rodada aberta para o centro/depósito escolhido.');
   const p=inventoryBase_(inv.inventario_id,center,depot).find(x=>str_(x.codigo)===code);if(!p)throw Error('Código não encontrado na base SAP deste centro e depósito.');
   const targets=targetForRound_(r,inventoryBase_(inv.inventario_id,center,depot),table_('RESULTADOS'));
@@ -131,7 +200,7 @@ function consultarProduto(d){const u=auth_(d.token),inv=activeInventory_(),cente
   return {codigo:code,descricao:p.descricao,um:p.um,centro:center,deposito:depot,rodada_id:r.rodada_id,rodada_numero:Number(r.numero)};
 }
 function salvarContagem(d){return withLock_(()=>{
-  const u=auth_(d.token),inv=activeInventory_(),req=str_(d.request_id);if(req.length<12)throw Error('Identificador do lançamento inválido.');
+  exigirSemLimpeza_();const u=auth_(d.token),inv=activeInventory_(),req=str_(d.request_id);if(req.length<12)throw Error('Identificador do lançamento inválido.');
   const old=table_('CONTAGENS').find(x=>x.request_id===req);if(old)return {ok:true,duplicado:true,lancamento_id:old.lancamento_id};
   const center=str_(d.centro),depot=str_(d.deposito),code=str_(d.codigo),rounds=sector_(inv.inventario_id,center,depot),r=rounds[rounds.length-1];
   if(!r||r.status!=='ABERTA')throw Error('Rodada encerrada ou inexistente.');
@@ -155,7 +224,7 @@ function getOverview_(inv){const base=inventoryBase_(inv.inventario_id),results=
   return {total_skus:base.length,skus_com_resultado:encerrados,conferidos,pendentes_aprovacao:Math.max(0,pendentesAprovacao-[...latest.values()].filter(r=>aprovados.has(r.resultado_id)).length),aprovados:aprovados.size};
 }
 /** Dashboard somente para supervisor. Consolidação por endereço da última rodada de cada produto. */
-function painel(d){const u=auth_(d.token);requireSupervisor_(u);const inv=activeInventory_();const base=inventoryBase_(inv.inventario_id),counts=table_('CONTAGENS').filter(x=>x.inventario_id===inv.inventario_id),rounds=table_('RODADAS').filter(x=>x.inventario_id===inv.inventario_id),results=table_('RESULTADOS').filter(x=>x.inventario_id===inv.inventario_id),approved=table_('APROVACOES').filter(x=>x.inventario_id===inv.inventario_id);
+function painel(d){exigirSemLimpeza_();const u=auth_(d.token);requireSupervisor_(u);const inv=activeInventory_();const base=inventoryBase_(inv.inventario_id),counts=table_('CONTAGENS').filter(x=>x.inventario_id===inv.inventario_id),rounds=table_('RODADAS').filter(x=>x.inventario_id===inv.inventario_id),results=table_('RESULTADOS').filter(x=>x.inventario_id===inv.inventario_id),approved=table_('APROVACOES').filter(x=>x.inventario_id===inv.inventario_id);
   const approvedIds=new Set(approved.map(x=>x.resultado_id)),latest=latestResultsMap_(results),latestRound=new Map(),group=new Map();
   for(const r of rounds){const k=r.centro+'|'+r.deposito,old=latestRound.get(k);if(!old||Number(r.numero)>Number(old.numero))latestRound.set(k,r);}
   const sectorData=[];
@@ -173,10 +242,10 @@ function painel(d){const u=auth_(d.token);requireSupervisor_(u);const inv=active
   const pending=[...latest.values()].filter(x=>x.status==='APROVACAO_PENDENTE'&&!approvedIds.has(x.resultado_id)).map(x=>({...x,descricao:byCode.get(normalizeKey_(x.codigo,x.centro,x.deposito))?.descricao||''}));
   const logs=table_('AUDITORIA').slice(-25).reverse().map(x=>({quando:x.data_hora,usuario:x.usuario,acao:x.acao,referencia:x.referencia}));
   let conferidos=0,comResultado=0;for(const b of base){const result=latest.get(b.chave);if(result){comResultado++;if(Math.abs(Number(result.diferenca))<0.0000001)conferidos++;}}
-  return {usuario:u,inventario:{id:inv.inventario_id,nome:inv.nome},resumo:{total_skus:base.length,com_resultado:comResultado,conferidos,pendentes_aprovacao:pending.length,aprovados:approved.length,total_lancamentos:counts.length},setores:sectorData.sort((a,b)=>String(a.centro).localeCompare(String(b.centro))||String(a.deposito).localeCompare(String(b.deposito))),enderecos:locations.slice(0,400),total_enderecos_filtrados:locations.length,divergencias:pending.slice(0,150),auditoria:logs,config:{permitir_recontagem:getConfig_('PERMITIR_MESMO_CONTADOR_ENTRE_RODADAS')}};
+  return {usuario:u,inventario:{id:inv.inventario_id,nome:inv.nome},modo:modoOperacao_(),resumo:{total_skus:base.length,com_resultado:comResultado,conferidos,pendentes_aprovacao:pending.length,aprovados:approved.length,total_lancamentos:counts.length},setores:sectorData.sort((a,b)=>String(a.centro).localeCompare(String(b.centro))||String(a.deposito).localeCompare(String(b.deposito))),enderecos:locations.slice(0,400),total_enderecos_filtrados:locations.length,divergencias:pending.slice(0,150),auditoria:logs,config:{permitir_recontagem:getConfig_('PERMITIR_MESMO_CONTADOR_ENTRE_RODADAS')}};
 }
 function encerrarRodada(d){return withLock_(()=>{
-  const u=auth_(d.token);requireSupervisor_(u);const inv=activeInventory_();const allRounds=table_('RODADAS'),r=allRounds.find(x=>x.rodada_id===str_(d.rodada_id)&&x.inventario_id===inv.inventario_id);
+  exigirSemLimpeza_();const u=auth_(d.token);requireSupervisor_(u);const inv=activeInventory_();const allRounds=table_('RODADAS'),r=allRounds.find(x=>x.rodada_id===str_(d.rodada_id)&&x.inventario_id===inv.inventario_id);
   if(!r||r.status!=='ABERTA')throw Error('Rodada já encerrada ou inválida.');
   const base=inventoryBase_(inv.inventario_id,r.centro,r.deposito),results=table_('RESULTADOS'),targets=targetForRound_(r,base,results),counts=table_('CONTAGENS').filter(c=>c.rodada_id===r.rodada_id),totals=new Map();
   for(const c of counts)totals.set(str_(c.codigo),(totals.get(str_(c.codigo))||0)+Number(c.quantidade));
@@ -194,7 +263,7 @@ function encerrarRodada(d){return withLock_(()=>{
   return {ok:true,numero:Number(r.numero),materiais:out.length,divergentes};
 });}
 function abrirProximaRodada(d){return withLock_(()=>{
-  const u=auth_(d.token);requireSupervisor_(u);const inv=activeInventory_(),rounds=sector_(inv.inventario_id,d.centro,d.deposito);const r=rounds[rounds.length-1];
+  exigirSemLimpeza_();const u=auth_(d.token);requireSupervisor_(u);const inv=activeInventory_(),rounds=sector_(inv.inventario_id,d.centro,d.deposito);const r=rounds[rounds.length-1];
   if(!r||r.status!=='ENCERRADA')throw Error('Encerre a rodada atual primeiro.');if(Number(r.numero)>=3)throw Error('Limite de três rodadas atingido.');
   const divergents=table_('RESULTADOS').filter(x=>x.rodada_id===r.rodada_id&&Math.abs(Number(x.diferenca))>0.0000001);
   if(!divergents.length)throw Error('Todos os materiais foram conferidos; não há divergências.');
@@ -203,7 +272,7 @@ function abrirProximaRodada(d){return withLock_(()=>{
   return {ok:true,rodada_id:id,numero:Number(r.numero)+1,alvos:divergents.length};
 });}
 function aprovarDivergencia(d){return withLock_(()=>{
-  const u=auth_(d.token);requireSupervisor_(u);const reason=str_(d.motivo);if(reason.length<8)throw Error('Informe uma justificativa com pelo menos oito caracteres.');
+  exigirSemLimpeza_();const u=auth_(d.token);requireSupervisor_(u);const reason=str_(d.motivo);if(reason.length<8)throw Error('Informe uma justificativa com pelo menos oito caracteres.');
   const res=table_('RESULTADOS').find(x=>x.resultado_id===str_(d.resultado_id)&&x.status==='APROVACAO_PENDENTE');if(!res)throw Error('Divergência não está aguardando aprovação.');
   if(table_('APROVACOES').some(x=>x.resultado_id===res.resultado_id))throw Error('Divergência já aprovada.');
   const id=uuid_();appendMany_('APROVACOES',[[id,res.resultado_id,res.inventario_id,res.codigo,res.centro,res.deposito,res.quantidade_sap,res.quantidade_contada,res.diferenca,reason,u.usuario,iso_()]]);
