@@ -18,6 +18,7 @@ class Sheet {
   getRange(row,col,n=1,m=1){const self=this;return {
     setValues(values){for(let i=0;i<n;i++){const at=row-1+i;while(self.rows.length<=at)self.rows.push([]);for(let j=0;j<m;j++)self.rows[at][col-1+j]=values[i][j];}return this;},
     setValue(value){return this.setValues([[value]]);},
+    clearContent(){for(let i=0;i<n;i++){const at=row-1+i;for(let j=0;j<m;j++)if(self.rows[at])self.rows[at][col-1+j]='';}while(self.rows.length>0&&self.rows[self.rows.length-1].every(x=>x===''||x===undefined))self.rows.pop();return this;},
     getValues(){return Array.from({length:n},(_,i)=>Array.from({length:m},(_,j)=>self.rows[row-1+i]?.[col-1+j]??''));},
     setBackground(){return this;},setFontWeight(){return this;}
   };}
@@ -56,6 +57,9 @@ assert(!props.has('ADMIN_PASSWORD'),'a senha do bootstrap deveria ser removida')
 assert.throws(()=>env.instalarProjeto(),/já instalado/);
 const token=env.entrar({usuario:'admin',senha:'senha-inicial-supersegura'}).token;
 assert.equal(env.sessaoAtual({token}).usuario.perfil,'ADMIN');
+assert.equal(env.estadoAmbiente({token}).modo,'TESTE');
+assert.equal(props.get('INVENTARIO_MODO'),'TESTE');
+fail(()=>env.estadoAmbiente({token:'token-invalido'}),/Sessão/);
 for(const u of ['CONTA','CONTB','CONTC'])env.cadastrarUsuario({token,usuario:{usuario:u,nome:'Contador '+u,senha:'senhafortedez123',perfil:'CONTADOR'}});
 const login=u=>env.entrar({usuario:u,senha:'senhafortedez123'}).token;
 const a=login('CONTA'),b=login('CONTB'),c=login('CONTC');
@@ -98,5 +102,38 @@ fail(()=>count(a,'1000',1,l1,'9'),/processo de fechamento/);
 const recovered=env.encerrarRodada({token,rodada_id:sector9.rodada_id});assert.equal(recovered.divergentes,0);
 assert.equal(db.getSheetByName('RESULTADOS').rows.filter(x=>x[2]===sector9.rodada_id).length,1,'não duplicar resultados na recuperação');
 assert.equal(source.getSheetByName('Data').getLastRow(),5,'fonte SAP deveria permanecer intacta');
+// Administração de ambiente: simulamos três rodadas, aprovações e depois limpeza total.
+const before=env.estadoAmbiente({token});
+assert(before.quantidades.contagens>0 && before.quantidades.resultados>0 && before.quantidades.aprovacoes>0);
+fail(()=>env.limparDadosTeste({token:a,confirmacao:'APAGAR TESTES'}),/administrador/);
+fail(()=>env.limparDadosTeste({token,confirmacao:'ERRADO'}),/Confirmação/);
+fail(()=>env.iniciarInventarioOficial({token,confirmacao:'INICIAR INVENTARIO OFICIAL'}),/dados ou rodadas de teste/);
+const cleaned=env.limparDadosTeste({token,confirmacao:'APAGAR TESTES'});
+assert.equal(cleaned.modo,'TESTE');assert.equal(cleaned.setores_restaurados,2);
+for(const name of ['CONTAGENS','RESULTADOS','APROVACOES'])assert.equal(env.table_(name).length,0,name+' não foi limpa');
+assert.equal(env.table_('RODADAS').length,2);
+assert(env.table_('RODADAS').every(x=>Number(x.numero)===1&&x.status==='ABERTA'));
+assert.equal(env.table_('BASE_ESTOQUE').length,4);
+assert.equal(env.table_('USUARIOS').length,4);
+assert.equal(env.table_('AUDITORIA').length,1);
+assert.equal(env.table_('AUDITORIA')[0].acao,'AMBIENTE_TESTE_LIMPO');
+assert.equal(env.painel({token}).resumo.total_lancamentos,0);
+// É possível repetir o teste e a limpeza antes da ativação oficial.
+count(a,'1000',2,l1);
+assert.equal(env.table_('CONTAGENS').length,1);
+env.limparDadosTeste({token,confirmacao:'APAGAR TESTES'});
+fail(()=>env.iniciarInventarioOficial({token:a,confirmacao:'INICIAR INVENTARIO OFICIAL'}),/administrador/);
+fail(()=>env.iniciarInventarioOficial({token,confirmacao:'CONFIRMO'}),/Confirmação/);
+const official=env.iniciarInventarioOficial({token,confirmacao:'INICIAR INVENTARIO OFICIAL'});
+assert.equal(official.modo,'OFICIAL');assert.equal(props.get('INVENTARIO_MODO'),'OFICIAL');
+assert.equal(env.estadoAmbiente({token}).modo,'OFICIAL');
+assert.equal(env.carregarContexto({token:a}).modo,'OFICIAL');
+fail(()=>env.limparDadosTeste({token,confirmacao:'APAGAR TESTES'}),/proibida/);
+fail(()=>env.iniciarInventarioOficial({token,confirmacao:'INICIAR INVENTARIO OFICIAL'}),/OFICIAL/);
+assert.equal(env.table_('RODADAS').length,2);
+count(a,'1000',3,l2);assert.equal(env.painel({token}).resumo.total_lancamentos,1);
+fail(()=>env.limparDadosTeste({token,confirmacao:'APAGAR TESTES'}),/proibida/);
+assert.equal(env.table_('CONTAGENS').length,1);
+assert.equal(source.getSheetByName('Data').getLastRow(),5,'fonte SAP não deve mudar durante resets/ativação');
 env.sair({token});fail(()=>env.sessaoAtual({token}),/expirada|inválida/);
-console.log('OK: importação, login, perfis, endereços, zero, idempotência, bloqueio por rodada, 3 rodadas, aprovação, dashboard, logout.');
+console.log('OK: importação, login, perfis, endereços, zero, idempotência, 3 rodadas, aprovação, dashboard, ambiente TESTE, limpeza segura, modo OFICIAL irreversível, bloqueio de exclusão, logout.');
