@@ -10,7 +10,8 @@ const CHANNEL = <?!= channelJson ?>;
 const METHODS = new Set([
   'ping','entrar','sair','sessaoAtual','carregarContexto','consultarProduto',
   'salvarContagem','painel','encerrarRodada','abrirProximaRodada',
-  'aprovarDivergencia','listarUsuarios','cadastrarUsuario','atualizarConfiguracao'
+  'aprovarDivergencia','listarUsuarios','cadastrarUsuario','atualizarConfiguracao',
+  'estadoAmbiente','limparDadosTeste','iniciarInventarioOficial'
 ]);
 function reply(payload){window.top.postMessage({app:'inventario-sap',channel:CHANNEL,...payload},ALLOWED_ORIGIN);}
 window.addEventListener('message',event=>{
