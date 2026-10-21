@@ -426,6 +426,44 @@ function getOverview_(inv){const base=inventoryBase_(inv.inventario_id),results=
   const aprovados=new Set(table_('APROVACOES').filter(x=>x.inventario_id===inv.inventario_id).map(x=>x.resultado_id));
   return {total_skus:base.length,skus_com_resultado:encerrados,conferidos,pendentes_aprovacao:Math.max(0,pendentesAprovacao-[...latest.values()].filter(r=>aprovados.has(r.resultado_id)).length),aprovados:aprovados.size};
 }
+
+/** Progresso global: cada Código + Centro + Depósito conta apenas uma vez, inclusive contagem zero.
+ * Não utiliza a quantidade de unidades, nem exige que a rodada esteja encerrada.
+ */
+function progressoGlobalProdutos_(base,contagens){
+  const chaves=new Set(base.map(p=>normalizeKey_(p.codigo,p.centro,p.deposito)));
+  const contados=new Set();
+  for(const c of contagens){
+    const chave=normalizeKey_(c.codigo,c.centro,c.deposito);
+    if(chaves.has(chave))contados.add(chave);
+  }
+  const total=chaves.size;
+  return {total,contados:contados.size,pendentes:total-contados.size,percentual:total?Math.round(contados.size/total*1000)/10:0};
+}
+
+/** Exportação cega, restrita a supervisor: exclusivamente divergentes da rodada anterior já encerrada.
+ * Não inclui saldos SAP, valores monetários ou quantidades já contadas.
+ */
+function exportarListaRecontagem(d){return withLock_(()=>{
+  exigirSemLimpeza_();
+  const u=auth_(d.token);requireSupervisor_(u);
+  const numero=Number(d.numero),centro=str_(d.centro),deposito=str_(d.deposito);
+  if(![2,3].includes(numero)||!centro)throw Error('Selecione uma 2ª ou 3ª contagem e um centro/depósito válidos.');
+  const inv=activeInventory_();
+  const rodadaAnterior=sector_(inv.inventario_id,centro,deposito).find(r=>Number(r.numero)===numero-1);
+  if(!rodadaAnterior||rodadaAnterior.status!=='ENCERRADA')throw Error('A rodada anterior precisa estar encerrada para exportar a recontagem.');
+  const resultados=resultadosAtivos_().filter(r=>r.inventario_id===inv.inventario_id&&r.rodada_id===rodadaAnterior.rodada_id&&Math.abs(Number(r.diferenca))>0.0000001);
+  const codigos=new Set(resultados.map(r=>str_(r.codigo)));
+  if(!codigos.size)throw Error('Não há produtos divergentes para esta recontagem.');
+  const itens=inventoryBase_(inv.inventario_id,centro,deposito)
+    .filter(p=>codigos.has(str_(p.codigo)))
+    .map(p=>({codigo:str_(p.codigo),descricao:str_(p.descricao),um:str_(p.um),centro:str_(p.centro),deposito:str_(p.deposito)}))
+    .sort((a,b)=>a.codigo.localeCompare(b.codigo,'pt-BR',{numeric:true}));
+  if(itens.length!==codigos.size)throw Error('Inconsistência entre a lista de divergências e a base SAP. Consulte o administrador.');
+  writeAudit_(u.usuario,'LISTA_RECONTAGEM_EXPORTADA','RODADA',rodadaAnterior.rodada_id,{numero,centro,deposito,produtos:itens.length});
+  return {numero,centro,deposito,total:itens.length,itens};
+});}
+
 /** Evolução por centro/depósito: uma linha por SKU, sem misturar rodadas.
  * Progresso de contagem = SKUs com pelo menos um lançamento / SKUs da base.
  * Concluídos = SKUs batendo em rodada fechada OU divergentes após a 3ª.
@@ -485,10 +523,17 @@ function acompanharProdutos_(base,counts,results,rounds,filter){
 function painel(d){exigirSemLimpeza_();const u=auth_(d.token);requireSupervisor_(u);const inv=activeInventory_();const base=inventoryBase_(inv.inventario_id),counts=table_('CONTAGENS').filter(x=>x.inventario_id===inv.inventario_id),rounds=table_('RODADAS').filter(x=>x.inventario_id===inv.inventario_id),results=resultadosAtivos_().filter(x=>x.inventario_id===inv.inventario_id),approved=table_('APROVACOES').filter(x=>x.inventario_id===inv.inventario_id);
   const approvedIds=new Set(approved.map(x=>x.resultado_id)),latest=latestResultsMap_(results),latestRound=new Map(),group=new Map();
   for(const r of rounds){const k=r.centro+'|'+r.deposito,old=latestRound.get(k);if(!old||Number(r.numero)>Number(old.numero))latestRound.set(k,r);}
+  const divergentesPorRodada=new Map(),rodadasPorSetor=new Map();
+  for(const r of results)if(Math.abs(Number(r.diferenca))>0.0000001)divergentesPorRodada.set(str_(r.rodada_id),(divergentesPorRodada.get(str_(r.rodada_id))||0)+1);
+  for(const r of rounds){const key=str_(r.centro)+'|'+str_(r.deposito);if(!rodadasPorSetor.has(key))rodadasPorSetor.set(key,[]);rodadasPorSetor.get(key).push(r);}
   const sectorData=[];
   for(const round of latestRound.values()){
     const items=base.filter(x=>x.centro===round.centro&&x.deposito===round.deposito),target=targetForRound_(round,items,results),set=new Set(counts.filter(c=>c.rodada_id===round.rodada_id).map(c=>c.codigo));
-    sectorData.push({pode_reabrir:round.status==='ENCERRADA'&&results.some(x=>x.rodada_id===round.rodada_id)&&!results.some(x=>x.rodada_id===round.rodada_id&&approvedIds.has(x.resultado_id)),centro:round.centro,deposito:round.deposito,rodada_id:round.rodada_id,numero:Number(round.numero),status:round.status,total_alvo:target.length,produtos_registrados:target.filter(x=>set.has(x.codigo)).length,produtos_faltando:target.filter(x=>!set.has(x.codigo)).slice(0,25).map(x=>x.codigo),faltando_total:target.filter(x=>!set.has(x.codigo)).length});
+    const historico=rodadasPorSetor.get(str_(round.centro)+'|'+str_(round.deposito))||[];
+    const anterior1=historico.find(r=>Number(r.numero)===1),anterior2=historico.find(r=>Number(r.numero)===2);
+    const exportacao_segunda=anterior1&&anterior1.status==='ENCERRADA'?(divergentesPorRodada.get(str_(anterior1.rodada_id))||0):0;
+    const exportacao_terceira=anterior2&&anterior2.status==='ENCERRADA'?(divergentesPorRodada.get(str_(anterior2.rodada_id))||0):0;
+    sectorData.push({exportacao_segunda,exportacao_terceira,pode_reabrir:round.status==='ENCERRADA'&&results.some(x=>x.rodada_id===round.rodada_id)&&!results.some(x=>x.rodada_id===round.rodada_id&&approvedIds.has(x.resultado_id)),centro:round.centro,deposito:round.deposito,rodada_id:round.rodada_id,numero:Number(round.numero),status:round.status,total_alvo:target.length,produtos_registrados:target.filter(x=>set.has(x.codigo)).length,produtos_faltando:target.filter(x=>!set.has(x.codigo)).slice(0,25).map(x=>x.codigo),faltando_total:target.filter(x=>!set.has(x.codigo)).length});
   }
   const roundNumberById=new Map(rounds.map(r=>[str_(r.rodada_id),Number(r.numero)]));
   const currentRoundOf=new Map();for(const c of counts){const key=normalizeKey_(c.codigo,c.centro,c.deposito),number=roundNumberById.get(str_(c.rodada_id))||0,old=currentRoundOf.get(key);if(!old||number>old.numero)currentRoundOf.set(key,{numero:number,rodada_id:c.rodada_id});}
@@ -500,7 +545,7 @@ function painel(d){exigirSemLimpeza_();const u=auth_(d.token);requireSupervisor_
   const locations=[...locGroup.values()].filter(x=>(!filter.codigo||String(x.codigo).includes(str_(filter.codigo)))&&['centro','deposito','rua','zona','posicao','palete'].every(k=>!str_(filter[k])||str_(x[k])===str_(filter[k]))).map(x=>({...x,descricao:byCode.get(normalizeKey_(x.codigo,x.centro,x.deposito))?.descricao||''}));
   const pending=[...latest.values()].filter(x=>x.status==='APROVACAO_PENDENTE'&&!approvedIds.has(x.resultado_id)).map(x=>({...x,descricao:byCode.get(normalizeKey_(x.codigo,x.centro,x.deposito))?.descricao||''}));
   let conferidos=0,comResultado=0;for(const b of base){const result=latest.get(b.chave);if(result){comResultado++;if(Math.abs(Number(result.diferenca))<0.0000001)conferidos++;}}
-  return {usuario:u,inventario:{id:inv.inventario_id,nome:inv.nome},modo:modoOperacao_(),resumo:{total_skus:base.length,com_resultado:comResultado,conferidos,pendentes_aprovacao:pending.length,aprovados:approved.length,total_lancamentos:counts.length},setores:sectorData.sort((a,b)=>String(a.centro).localeCompare(String(b.centro))||String(a.deposito).localeCompare(String(b.deposito))),enderecos:locations.slice(0,400),total_enderecos_filtrados:locations.length,divergencias:pending.slice(0,150),config:{permitir_recontagem:getConfig_('PERMITIR_MESMO_CONTADOR_ENTRE_RODADAS')},acompanhamento:acompanharProdutos_(base,counts,results,rounds,d&&d.acompanhamento||{})};
+  return {usuario:u,inventario:{id:inv.inventario_id,nome:inv.nome},modo:modoOperacao_(),resumo:{total_skus:base.length,com_resultado:comResultado,conferidos,pendentes_aprovacao:pending.length,aprovados:approved.length,total_lancamentos:counts.length},progresso_geral:progressoGlobalProdutos_(base,counts),setores:sectorData.sort((a,b)=>String(a.centro).localeCompare(String(b.centro))||String(a.deposito).localeCompare(String(b.deposito))),enderecos:locations.slice(0,400),total_enderecos_filtrados:locations.length,divergencias:pending.slice(0,150),config:{permitir_recontagem:getConfig_('PERMITIR_MESMO_CONTADOR_ENTRE_RODADAS')},acompanhamento:acompanharProdutos_(base,counts,results,rounds,d&&d.acompanhamento||{})};
 }
 function encerrarRodada(d){return withLock_(()=>{
   exigirSemLimpeza_();const u=auth_(d.token);requireSupervisor_(u);const inv=activeInventory_();const allRounds=table_('RODADAS'),r=allRounds.find(x=>x.rodada_id===str_(d.rodada_id)&&x.inventario_id===inv.inventario_id);
