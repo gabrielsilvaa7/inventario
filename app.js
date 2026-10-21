@@ -340,9 +340,69 @@ async function saveCount(event){event.preventDefault();const button=$('saveCount
   toast('Contagem registrada e auditada!','success');state.dashboard=null;state.requestId=null;$('quantity').value='';$('quantity').focus();
 }catch(err){toast(err.message,'error');}finally{btnBusy(button,false);button.disabled=!state.product;}}
 function fmtDate(x){const d=new Date(x);return Number.isFinite(d.getTime())?d.toLocaleString('pt-BR',{timeZone:'America/Manaus'}):String(x||'');}
+
+/** Velocímetro global — porcentagem de SKUs (código+centro+depósito) com algum lançamento. */
+function paintGauge(progresso){
+  const data=progresso||{total:0,contados:0,percentual:0};
+  const pct=Math.max(0,Math.min(100,Number(data.percentual)||0));
+  $('gaugePercent').textContent=pct.toLocaleString('pt-BR',{maximumFractionDigits:1})+'%';
+  $('gaugeFraction').textContent=num(data.contados)+' de '+num(data.total)+' produtos contados';
+  const fill=$('gaugeFill');
+  fill.style.strokeDashoffset=String(100-pct);
+  fill.style.stroke=pct>=100?'#18734c':'#df6d3d';
+}
+function renderRecountExports(){
+  const center=$('dashboardCenter').value,depot=$('dashboardDepot').value;
+  const sector=state.dashboard?.setores?.find(x=>String(x.centro)===center&&String(x.deposito)===depot);
+  const segunda=Number(sector?.exportacao_segunda)||0,terceira=Number(sector?.exportacao_terceira)||0;
+  const available=segunda>0||terceira>0;
+  $('recountExportPanel').hidden=!available;
+  $('exportRound2').hidden=!(segunda>0);
+  $('exportRound3').hidden=!(terceira>0);
+  $('exportRound2').disabled=!(segunda>0);
+  $('exportRound3').disabled=!(terceira>0);
+  if(available){
+    $('exportRound2').textContent='Exportar 2ª contagem ('+num(segunda)+') · CSV';
+    $('exportRound3').textContent='Exportar 3ª contagem ('+num(terceira)+') · CSV';
+    $('recountExportHint').textContent='Centro '+center+' · Depósito '+(depot||'Não informado')+'. Apenas produtos divergentes na rodada anterior encerrada, sem saldo SAP.';
+  }
+}
+/** Impede que descrições sejam interpretadas como fórmulas por programas de planilha. */
+function csvCell(value){
+  const raw=String(value??'');
+  const valueSafe=/^[=+@-]/.test(raw.trimStart())?"'"+raw:raw;
+  return '"'+valueSafe.replace(/"/g,'""')+'"';
+}
+function gerarCsvRecontagem(lista){
+  const headers=['Código','Descrição','Unidade','Centro','Depósito','Rodada','Rua','Zona','Posição','Palete','Quantidade física'];
+  const linhas=[headers,...lista.itens.map(p=>[p.codigo,p.descricao,p.um,p.centro,p.deposito,lista.numero,'','','','',''])];
+  const csv='\uFEFF'+linhas.map(row=>row.map(csvCell).join(';')).join('\r\n')+'\r\n';
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const href=URL.createObjectURL(blob),link=document.createElement('a');
+  const stamp=new Date().toISOString().slice(0,10).replace(/-/g,'');
+  const key=s=>String(s).replace(/[^a-zA-Z0-9_-]/g,'_')||'SEM_DEP';
+  link.href=href;link.download='Friovix_'+lista.numero+'a_Contagem_C'+key(lista.centro)+'_D'+key(lista.deposito)+'_'+stamp+'.csv';
+  document.body.appendChild(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(href),3000);
+}
+async function exportarRecontagem(numeroRodada,button){
+  if(!canSupervise())return;
+  const centro=$('dashboardCenter').value,deposito=$('dashboardDepot').value;
+  if(!centro){toast('Selecione centro e depósito no dashboard.','error');return;}
+  btnBusy(button,true,'Preparando CSV…');
+  try{
+    const lista=await api('exportarListaRecontagem',{numero:numeroRodada,centro,deposito},180000);
+    if(!Array.isArray(lista.itens)||!lista.itens.length)throw Error('Nenhum produto elegível encontrado.');
+    gerarCsvRecontagem(lista);
+    toast('Lista da '+numeroRodada+'ª contagem gerada com '+num(lista.itens.length)+' produtos.','success');
+  }catch(err){toast('Exportação: '+err.message,'error');}
+  finally{btnBusy(button,false);renderRecountExports();}
+}
+
 function paintDashboard(data){state.dashboard=data;const k=data.resumo;
   const stats=[['SKUs da base',k.total_skus],['Com resultado',k.com_resultado],['Conferidos',k.conferidos],['Aprovação pendente',k.pendentes_aprovacao],['Lançamentos',k.total_lancamentos]];
   $('stats').innerHTML=stats.map(x=>`<div class="stat"><span>${safe(x[0])}</span><strong>${num(x[1])}</strong></div>`).join('');
+  paintGauge(data.progresso_geral);renderRecountExports();
   $('locationCount').textContent=`${num(data.total_enderecos_filtrados)} endereços encontrados. Exibindo até 400 resultados; refine os filtros se necessário.`;
   $('locationsBody').innerHTML=data.enderecos.length?data.enderecos.map(x=>`<tr><td><strong>${safe(x.codigo)}</strong></td><td>${safe(x.descricao)}</td><td>${safe(x.centro)}</td><td>${safe(x.deposito)}</td><td>${safe(x.rua)}</td><td>${safe(x.zona)}</td><td>${safe(x.posicao)}</td><td>${safe(x.palete)}</td><td>${num(x.quantidade)}</td><td>${safe(x.rodada)}</td></tr>`).join(''):'<tr><td colspan="10" class="empty">Nenhum material encontrado nos filtros escolhidos.</td></tr>';
   $('sectorsBody').innerHTML=data.setores.length?data.setores.map(r=>{
@@ -461,8 +521,8 @@ $('sectorSelect').addEventListener('change',()=>{resetProduct();$('productCode')
 $('countForm').addEventListener('input',()=>state.requestId=null);
 $('filterForm').addEventListener('submit',async e=>{e.preventDefault();await refreshDashboard('Filtrando endereços…');});
 $('refreshDashboard').addEventListener('click',refreshDashboard);
-$('dashboardCenter').addEventListener('change',()=>{state.productPage=1;renderDashboardSectorOptions(true);queueFollowup();});
-$('dashboardDepot').addEventListener('change',()=>{state.productPage=1;queueFollowup();});
+$('dashboardCenter').addEventListener('change',()=>{state.productPage=1;renderDashboardSectorOptions(true);renderRecountExports();queueFollowup();});
+$('dashboardDepot').addEventListener('change',()=>{state.productPage=1;renderRecountExports();queueFollowup();});
 $('searchFollowup').addEventListener('click',()=>{state.productPage=1;refreshFollowup();});
 $('dashboardQuery').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();state.productPage=1;refreshFollowup();}});
 $('followupPrev').addEventListener('click',()=>{if(state.productPage>1){state.productPage--;refreshFollowup();}});
@@ -479,4 +539,6 @@ $('officialModeButton').addEventListener('click',startOfficialInventory);
 $('clearTestDataButton').addEventListener('click',clearTestData);
 $('sapPreviewButton').addEventListener('click',visualizarBaseSAP);
 $('sapApplyButton').addEventListener('click',aplicarBaseSAP);
+$('exportRound2').addEventListener('click',e=>exportarRecontagem(2,e.currentTarget));
+$('exportRound3').addEventListener('click',e=>exportarRecontagem(3,e.currentTarget));
 initBridge();
