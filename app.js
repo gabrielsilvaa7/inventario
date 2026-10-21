@@ -1,7 +1,7 @@
 /* Inventário Friovix — Cliente GitHub Pages. Nenhum segredo é colocado neste arquivo. */
 'use strict';
 const $=id=>document.getElementById(id);
-const state={bridgeWindow:null,bridgeOrigin:'',channel:'',ready:false,pending:new Map(),token:sessionStorage.getItem('inventario_session')||'',usuario:null,context:null,product:null,dashboard:null,requestId:null,tab:'contagem',productPage:1,suggestionSequence:0,suggestionTimer:null,suggestions:[],suggestionActive:-1,catalogCache:new Map(),catalogPending:new Map(),catalogUnsupported:false,catalogSignature:'',dashboardLoading:false,dashboardQueued:'',followupSeq:0,followupTimer:null};
+const state={bridgeWindow:null,bridgeOrigin:'',channel:'',ready:false,pending:new Map(),token:sessionStorage.getItem('inventario_session')||'',usuario:null,context:null,product:null,dashboard:null,requestId:null,tab:'contagem',productPage:1,suggestionSequence:0,suggestionTimer:null,suggestions:[],suggestionActive:-1,catalogCache:new Map(),catalogPending:new Map(),catalogUnsupported:false,catalogSignature:'',dashboardLoading:false,dashboardQueued:'',followupSeq:0,followupTimer:null,sapBusy:false,sapPreview:null};
 const safe=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const num=v=>new Intl.NumberFormat('pt-BR',{maximumFractionDigits:3}).format(Number(v)||0);
 const random=()=>typeof crypto!=='undefined'&&crypto.randomUUID?crypto.randomUUID():String(Date.now())+'-'+Math.random().toString(36).slice(2);
@@ -64,6 +64,7 @@ async function refreshContext(){
   const next=await api('carregarContexto');
   const signature=JSON.stringify([next.inventario?.id,(next.setores||[]).map(x=>[x.centro,x.deposito,x.rodada_id,x.status])]);
   if(signature!==state.catalogSignature){state.catalogCache.clear();state.catalogPending.clear();state.catalogSignature=signature;}
+  if(state.sapPreview){state.sapPreview=null;atualizarBotoesSAP();}
   state.context=next;
   $('inventoryName').textContent='Controle físico de estoque';renderModeBadge(state.context.modo);
   const prev=$('sectorSelect').value;$('sectorSelect').innerHTML='<option value="">Selecione centro e depósito...</option>'+state.context.setores.map(x=>`<option value="${safe(x.centro+'|'+x.deposito)}">Centro ${safe(x.centro)} · Depósito ${safe(x.deposito||'Não informado')}</option>`).join('');
@@ -94,10 +95,66 @@ function paintEnvironment(data){
   const n=data.quantidades;
   $('environmentMetrics').innerHTML=[['Contagens',n.contagens],['Resultados',n.resultados],['Aprovações',n.aprovacoes],['Rodadas',n.rodadas]].map(x=>`<div><strong>${num(x[1])}</strong><span>${safe(x[0])}</span></div>`).join('');
   renderModeBadge(data.modo);
+  atualizarBotoesSAP();
 }
 async function refreshEnvironment(){
   if(state.usuario?.perfil!=='ADMIN')return;
   try{paintEnvironment(await api('estadoAmbiente'));}catch(err){toast('Administração: '+err.message,'error');}
+}
+function atualizarBotoesSAP(){
+  const oficial=state.context?.modo==='OFICIAL',busy=Boolean(state.sapBusy);
+  $('sapPreviewButton').disabled=oficial||busy;
+  $('sapApplyButton').disabled=oficial||busy||!state.sapPreview?.pode_atualizar;
+  $('sapSyncMode').textContent=oficial?'Base congelada — OFICIAL':'Disponível no modo TESTE';
+}
+function statusSAP(loading,message){
+  $('sapSyncStatus').hidden=!loading;
+  if(loading)$('sapSyncStatusText').textContent=message;
+}
+function desenharPreviaSAP(data){
+  const stats=[['SKUs na origem',data.atuais],['Novos',data.novos],['Alterados',data.alterados],['Removidos',data.removidos],['Saldos alterados',data.saldos],['Centros/depósitos',data.setores]];
+  const squares=stats.map(x=>'<div class="sap-preview-stat"><strong>'+num(x[1])+'</strong><small>'+safe(x[0])+'</small></div>').join('');
+  const blockers=(data.impedimentos||[]).map(x=>'<div class="sap-sync-warning">'+safe(x)+'</div>').join('');
+  const examples=(data.exemplos||[]).map(x=>'<span>'+safe(x.tipo)+' · '+safe(x.chave)+'</span>').join('');
+  const result=!data.ha_alteracoes?'Nenhuma diferença identificada. A base já está atualizada.':
+    data.pode_atualizar?'Diferenças encontradas. Revise os números e confirme a atualização.':
+    'Alterações encontradas, mas a sincronização está bloqueada enquanto houver pendências.';
+  $('sapSyncPreview').innerHTML='<strong>'+safe(result)+'</strong><div class="sap-preview-stats">'+squares+'</div>'+
+    '<p class="sap-sync-info">Base anterior: '+num(data.anteriores)+' SKUs · '+num(data.descricoes)+' descrições alteradas · '+num(data.unidades)+' unidades de medida alteradas.</p>'+
+    blockers+(examples?'<div class="sap-sync-info">Exemplos de alterações:</div><div class="sap-sync-rows">'+examples+'</div>':'');
+}
+async function visualizarBaseSAP(){
+  if(state.usuario?.perfil!=='ADMIN'||state.sapBusy)return;
+  state.sapBusy=true;state.sapPreview=null;atualizarBotoesSAP();
+  const b=$('sapPreviewButton');btnBusy(b,true,'Comparando…');
+  statusSAP(true,'Lendo a planilha SAP e comparando com o inventário…');
+  try{
+    const result=await api('previsualizarAtualizacaoSAP',{},240000);
+    state.sapPreview=result;desenharPreviaSAP(result);
+    if(result.impedimentos?.length)toast('Há pendências que impedem a atualização da base.','error');
+  }catch(err){$('sapSyncPreview').innerHTML='<div class="sap-sync-warning">'+safe(err.message)+'</div>';toast('Base SAP: '+err.message,'error');}
+  finally{state.sapBusy=false;btnBusy(b,false);statusSAP(false);atualizarBotoesSAP();}
+}
+async function aplicarBaseSAP(){
+  if(state.usuario?.perfil!=='ADMIN'||state.sapBusy||!state.sapPreview?.pode_atualizar)return;
+  const previa=state.sapPreview;
+  if(!confirm('Atualizar o estoque de referência? Produtos, quantidades e depósitos serão substituídos pelos dados atuais da planilha SAP. A versão anterior ficará preservada.'))return;
+  const confirmacao=prompt('Para confirmar a sincronização, digite exatamente: ATUALIZAR BASE SAP');
+  if(confirmacao===null)return;
+  if(confirmacao!=='ATUALIZAR BASE SAP'){toast('Confirmação incorreta. A base não foi alterada.','error');return;}
+  state.sapBusy=true;atualizarBotoesSAP();
+  const b=$('sapApplyButton');btnBusy(b,true,'Atualizando…');
+  statusSAP(true,'Preparando nova versão da base SAP. Aguarde e não feche esta página…');
+  try{
+    const r=await api('atualizarBaseSAP',{assinatura:previa.assinatura,confirmacao},300000);
+    state.sapPreview=null;
+    state.catalogCache.clear();state.catalogPending.clear();state.catalogSignature='';state.dashboard=null;
+    resetProduct();$('productCode').value='';hideSuggestions();
+    $('sapSyncPreview').innerHTML='<div class="notice">Atualização concluída. '+num(r.atuais)+' SKUs ativos, '+num(r.novos)+' novos, '+num(r.alterados)+' alterados e '+num(r.removidos)+' removidos. A versão anterior foi preservada.</div>';
+    toast('Base SAP sincronizada. Atualize as páginas de outros usuários para carregar o novo estoque.','success');
+    await refreshContext();await refreshEnvironment();
+  }catch(err){state.sapPreview=null;toast('Sincronização não concluída: '+err.message,'error');$('sapSyncPreview').innerHTML='<div class="sap-sync-warning">'+safe(err.message)+' Faça uma nova prévia antes de tentar novamente.</div>';}
+  finally{state.sapBusy=false;btnBusy(b,false);statusSAP(false);atualizarBotoesSAP();}
 }
 async function clearTestData(){
   if(state.usuario?.perfil!=='ADMIN')return;
@@ -420,4 +477,6 @@ $('userForm').addEventListener('submit',doCreateUser);$('saveSettings').addEvent
 $('testModeButton').addEventListener('click',()=>toast('O modo TESTE já está ativo.','success'));
 $('officialModeButton').addEventListener('click',startOfficialInventory);
 $('clearTestDataButton').addEventListener('click',clearTestData);
+$('sapPreviewButton').addEventListener('click',visualizarBaseSAP);
+$('sapApplyButton').addEventListener('click',aplicarBaseSAP);
 initBridge();
