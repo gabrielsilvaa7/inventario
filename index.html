@@ -135,6 +135,16 @@
           <div class="test-cleanup"><div><strong>Limpar registros de teste</strong><p class="hint">Remove contagens, resultados, aprovações e rodadas simuladas. Restaura a primeira rodada de cada centro e depósito; preserva a base SAP e os usuários.</p></div><button type="button" class="btn danger" id="clearTestDataButton" disabled>Apagar registros de teste</button></div>
           <p class="hint">Ao ativar o modo OFICIAL, a alteração é permanente neste inventário e o backend bloqueia a limpeza, mesmo que alguém tente executar a função diretamente. Para começar oficialmente, os registros de teste devem ter sido limpos.</p>
         </article>
+        <article class="panel" id="sapSyncPanel">
+          <div class="panel-head"><div><h3>Atualizar Base SAP</h3><p class="hint">Sincronize a planilha SAP ESTOQUE 1025-1026 somente após limpar as contagens de teste. A versão anterior fica preservada.</p></div><span class="tag" id="sapSyncMode">Modo TESTE</span></div>
+          <div class="sap-sync-actions">
+            <button type="button" class="btn secondary" id="sapPreviewButton">Verificar alterações</button>
+            <button type="button" class="btn primary" id="sapApplyButton" disabled>Atualizar Base SAP</button>
+          </div>
+          <div id="sapSyncStatus" class="operation-status secondary-status" role="status" aria-live="polite" hidden><span class="mini-spinner" aria-hidden="true"></span><span id="sapSyncStatusText">Verificando planilha SAP…</span></div>
+          <div id="sapSyncPreview" class="sap-preview" aria-live="polite"><p class="hint">Clique em “Verificar alterações” para comparar o estoque SAP com a base atual do inventário.</p></div>
+          <p class="hint">Transferências entre depósitos aparecem como saída de um código/depósito e entrada em outro. No modo OFICIAL, a base permanece congelada. Nenhuma sincronização apaga usuários ou auditoria.</p>
+        </article>
         <h3>Gerenciar usuários</h3>
         <div class="two-col">
           <article class="panel"><h3>Novo usuário</h3><form id="userForm" class="stack"><label>Usuário<input id="newUsername" placeholder="JOAO.SILVA" minlength="3" required></label><label>Nome<input id="newName" required></label><label>Perfil<select id="newRole"><option value="CONTADOR">Contador</option><option value="SUPERVISOR">Supervisor</option><option value="ADMIN">Administrador</option></select></label><label>Senha inicial<input id="newPassword" type="password" minlength="10" required autocomplete="new-password"></label><button class="btn primary" type="submit">Cadastrar usuário</button></form></article>
