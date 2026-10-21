@@ -80,6 +80,19 @@
 .dashboard-actions{display:flex;align-items:center;gap:12px;justify-content:flex-end;flex-wrap:wrap}
 @media(max-width:650px){.dashboard-actions{justify-content:flex-start}.dashboard-actions .tiny{order:2;width:100%}}
 
+/* Prévia administrativa de sincronização do estoque SAP. */
+.sap-sync-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:16px 0}
+.sap-preview{border:1px solid var(--line);background:#f7f9fc;padding:15px;border-radius:11px;margin:12px 0}
+.sap-preview-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:12px 0}
+.sap-preview-stat{border-radius:9px;padding:11px;background:#fff;border:1px solid #e2e8f0}
+.sap-preview-stat strong{display:block;color:var(--navy);font-size:1.35rem}
+.sap-preview-stat small{color:var(--muted);font-size:.76rem}
+.sap-sync-warning{padding:10px 12px;border-radius:8px;background:#fff0e7;color:#934d22;border:1px solid #f1d4bd;font-size:.85rem;line-height:1.5}
+.sap-sync-info{font-size:.83rem;color:var(--muted);line-height:1.6}
+.sap-sync-rows{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.sap-sync-rows span{padding:5px 8px;background:#e8eef6;color:#254566;border-radius:8px;font-size:.74rem}
+@media(max-width:650px){.sap-preview-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.sap-sync-actions .btn{width:100%}}
+
 /* Reabertura supervisionada de rodada encerrada */
 .round-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:175px}
 .btn.outline-reopen{background:#fff;border:1px solid #52749b;color:#244b73;font-weight:750}
