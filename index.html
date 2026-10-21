@@ -50,7 +50,7 @@
               <label for="productCode">Código ou descrição do produto</label>
               <div class="product-lookup">
                 <div class="input-action"><input id="productCode" placeholder="Digite pelo menos 2 caracteres" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="productSuggestions" required><button type="submit" class="btn secondary">Buscar</button></div>
-                <div id="productSuggestions" class="suggestions" role="listbox" hidden></div>
+                <div id="productSuggestions" class="suggestions" role="listbox" aria-label="Sugestões de produtos" hidden></div>
               </div>
               <p class="hint">A pesquisa mostra apenas materiais do centro e depósito selecionados que podem ser contados na rodada atual.</p>
             </form>
@@ -75,7 +75,8 @@
       </section>
 
       <section class="page" id="tab-painel">
-        <div class="heading inline"><div><div class="eyebrow">INDICADORES</div><h2>Dashboard de inventário</h2><p>Contagens e localização de materiais por endereço físico.</p></div><button class="btn secondary" id="refreshDashboard" type="button">Atualizar</button></div>
+        <div class="heading inline"><div><div class="eyebrow">INDICADORES</div><h2>Dashboard de inventário</h2><p>Contagens e localização de materiais por endereço físico.</p></div><div class="dashboard-actions"><span id="dashboardUpdatedAt" class="tiny" aria-live="polite">Aguardando primeira atualização</span><button class="btn secondary" id="refreshDashboard" type="button">Atualizar</button></div></div>
+        <div id="dashboardStatus" class="operation-status" role="status" aria-live="polite" hidden><span class="mini-spinner" aria-hidden="true"></span><span id="dashboardStatusText">Atualizando informações do inventário…</span></div>
         <div class="stats" id="stats"></div>
         <article class="panel progress-panel">
           <div class="panel-head"><div><h3>Acompanhamento de produtos</h3><p>Resultado consolidado após o encerramento de cada rodada, com progresso por centro e depósito.</p></div></div>
@@ -85,6 +86,7 @@
             <label>Localizar produto<input type="search" id="dashboardQuery" placeholder="Código ou descrição" autocomplete="off"></label>
             <button class="btn secondary" type="button" id="searchFollowup">Filtrar produtos</button>
           </div>
+          <div id="followupLoading" class="operation-status secondary-status" role="status" aria-live="polite" hidden><span class="mini-spinner" aria-hidden="true"></span><span>Consultando produtos e rodadas…</span></div>
           <div class="progress-overview" id="progressOverview" aria-live="polite"></div>
           <div class="round-legend" aria-label="Legenda das contagens">
             <span><i class="round-dot passed"></i> Estoque conferido</span>
@@ -107,6 +109,7 @@
             <label>Palete<input id="filterPalete" type="number" min="1"></label>
             <button class="btn primary filter-btn" type="submit">Pesquisar</button>
           </form>
+          <div id="locatorLoading" class="operation-status secondary-status" role="status" aria-live="polite" hidden><span class="mini-spinner" aria-hidden="true"></span><span>Filtrando endereços físicos…</span></div>
           <div id="locationCount" class="tiny counter"></div>
           <div class="table-wrap"><table><thead><tr><th>Código</th><th>Descrição</th><th>Centro</th><th>Depósito</th><th>Rua</th><th>Zona</th><th>Posição</th><th>Palete</th><th>Qtd.</th><th>Rod.</th></tr></thead><tbody id="locationsBody"><tr><td colspan="10" class="empty">Carregando...</td></tr></tbody></table></div>
         </article>

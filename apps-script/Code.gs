@@ -199,6 +199,47 @@ function consultarProduto(d){exigirSemLimpeza_();const u=auth_(d.token),inv=acti
   }
   return {codigo:code,descricao:p.descricao,um:p.um,centro:center,deposito:depot,rodada_id:r.rodada_id,rodada_numero:Number(r.numero)};
 }
+/** Carregamento por centro/depósito e usuário: um acesso em vez de um acesso por tecla.
+ * A lista é auxiliar (somente código/descrição/UM), NUNCA substitui consultarProduto/salvarContagem
+ * que validam autorização e rodada novamente na hora de registrar.
+ */
+function catalogoProdutos(d){
+  exigirSemLimpeza_();
+  const u=auth_(d.token),inv=activeInventory_(),centro=str_(d.centro),deposito=str_(d.deposito);
+  if(!centro)throw Error('Selecione o centro e o depósito antes de pesquisar.');
+  const rodadas=sector_(inv.inventario_id,centro,deposito),rodada=rodadas[rodadas.length-1];
+  if(!rodada||rodada.status!=='ABERTA')return {rodada_id:rodada?rodada.rodada_id:'',itens:[]};
+  // Catálogo leva apenas as 7 colunas necessárias, em vez das 14 da base inteira.
+  const sheet=sh_('BASE_ESTOQUE'),last=sheet.getLastRow();
+  const rows=last>1?sheet.getRange(2,1,last-1,7).getValues():[];
+  const base=rows.filter(row=>str_(row[0])===str_(inv.inventario_id)&&str_(row[5])===centro&&str_(row[6])===deposito)
+    .map(row=>({codigo:str_(row[2]),descricao:str_(row[3]),um:str_(row[4]),centro:str_(row[5]),deposito:str_(row[6])}));
+  const alvos=Number(rodada.numero)===1?base:targetForRound_(rodada,base,table_('RESULTADOS'));
+  let jaContados=new Set();
+  if(Number(rodada.numero)>1&&getConfig_('PERMITIR_MESMO_CONTADOR_ENTRE_RODADAS')!=='SIM'){
+    const anteriores=new Set(rodadas.filter(r=>Number(r.numero)<Number(rodada.numero)).map(r=>str_(r.rodada_id)));
+    jaContados=new Set(table_('CONTAGENS').filter(c=>c.usuario===u.usuario&&anteriores.has(str_(c.rodada_id))).map(c=>str_(c.codigo)));
+  }
+  return {rodada_id:rodada.rodada_id,itens:alvos.filter(p=>!jaContados.has(str_(p.codigo))).map(p=>({codigo:str_(p.codigo),descricao:str_(p.descricao),um:str_(p.um)}))};
+}
+
+/** Acompanhamento leve: filtros/paginação sem remontar endereços, aprovações ou painel inteiro. */
+function filtrarAcompanhamento(d){
+  exigirSemLimpeza_();
+  const u=auth_(d.token);requireSupervisor_(u);
+  const inv=activeInventory_(),f=d.acompanhamento||{},centro=str_(f.centro),deposito=str_(f.deposito);
+  if(!centro)return acompanharProdutos_([],[],[],[],f);
+  // Acompanhamento precisa somente dos campos iniciais; evite carregar 14 colunas da base.
+  const sheet=sh_('BASE_ESTOQUE'),last=sheet.getLastRow();
+  const rows=last>1?sheet.getRange(2,1,last-1,7).getValues():[];
+  const itens=rows.filter(row=>str_(row[0])===str_(inv.inventario_id)&&str_(row[5])===centro&&str_(row[6])===deposito)
+    .map(row=>({chave:str_(row[1]),codigo:str_(row[2]),descricao:str_(row[3]),centro:str_(row[5]),deposito:str_(row[6])}));
+  return acompanharProdutos_(itens,
+    table_('CONTAGENS').filter(c=>c.inventario_id===inv.inventario_id&&str_(c.centro)===centro&&str_(c.deposito)===deposito),
+    table_('RESULTADOS').filter(r=>r.inventario_id===inv.inventario_id&&str_(r.centro)===centro&&str_(r.deposito)===deposito),
+    table_('RODADAS').filter(r=>r.inventario_id===inv.inventario_id&&str_(r.centro)===centro&&str_(r.deposito)===deposito),f);
+}
+
 /** Sugestões por código ou descrição, limitadas a 12, sempre no setor/rodada permitidos. */
 function sugerirProdutos(d){
   exigirSemLimpeza_();

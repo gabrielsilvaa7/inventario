@@ -64,6 +64,16 @@ for(const u of ['CONTA','CONTB','CONTC'])env.cadastrarUsuario({token,usuario:{us
 const login=u=>env.entrar({usuario:u,senha:'senhafortedez123'}).token;
 const a=login('CONTA'),b=login('CONTB'),c=login('CONTC');
 const count=(t,code,qty,location={},depot='1',req)=>env.salvarContagem({token:t,centro:'1025',deposito:depot,codigo:code,quantidade:qty,rua:location.rua??'',zona:location.zona??'',posicao:location.posicao??'',palete:location.palete??'',request_id:req||crypto.randomUUID()});
+// Carregamento único do catálogo para busca local: somente SKUs permitidos por setor/usuário.
+fail(()=>env.catalogoProdutos({token:'invalido',centro:'1025',deposito:'1'}),/Sessão/);
+assert.equal(env.catalogoProdutos({token:a,centro:'1025',deposito:'1'}).itens.length,3);
+assert.equal(env.catalogoProdutos({token:a,centro:'1025',deposito:'9'}).itens.length,1);
+assert.equal(env.catalogoProdutos({token:a,centro:'1025',deposito:'99'}).itens.length,0);
+fail(()=>env.filtrarAcompanhamento({token:a,acompanhamento:{centro:'1025',deposito:'1'}}),/supervisor/);
+const quickBefore=env.filtrarAcompanhamento({token,acompanhamento:{centro:'1025',deposito:'1',termo:'2000'}});
+assert.equal(quickBefore.total,3);
+assert.equal(quickBefore.total_filtrado,1);
+assert.equal(quickBefore.itens[0].codigo,'2000');
 // As sugestões são privadas, limitadas ao centro/deposito/rodada e pesquisáveis por descrição.
 fail(()=>env.sugerirProdutos({token:'invalido',centro:'1025',deposito:'1',termo:'prod'}),/Sessão/);
 assert.equal(env.sugerirProdutos({token:a,centro:'1025',deposito:'1',termo:'prod'}).itens.length,3);
@@ -89,6 +99,8 @@ assert.equal(duringFirst.progresso,67);
 assert.equal(duringFirst.conclusao,0);
 assert.equal(duringFirst.total_filtrado,1);
 assert.equal(duringFirst.itens[0].rodadas[0],'EM_CONTAGEM');
+assert.equal(env.filtrarAcompanhamento({token,acompanhamento:{centro:'1025',deposito:'1',termo:'1000'}}).itens[0].rodadas[0],'EM_CONTAGEM');
+
 assert.equal(duringFirst.itens[0].situacao,'1ª contagem em andamento');
 fail(()=>env.encerrarRodada({token,rodada_id:env.carregarContexto({token}).setores.find(x=>x.deposito==='1').rodada_id}),/sem contagem/);
 count(a,'3000',0);
@@ -102,6 +114,7 @@ assert.equal(closedFirst.itens.find(x=>x.codigo==='2000').rodadas[0],'CONFERIDO'
 assert.equal(closedFirst.itens.find(x=>x.codigo==='2000').situacao,'Estoque Batendo');
 assert.equal(closedFirst.itens.find(x=>x.codigo==='1000').rodadas[0],'SEGUNDA_CONTAGEM');
 assert.equal(closedFirst.itens.find(x=>x.codigo==='1000').situacao,'Aguardando 2ª contagem');
+assert.equal(env.catalogoProdutos({token:a,centro:'1025',deposito:'1'}).itens.length,0,'rodada encerrada não permite catálogo');
 assert.equal(env.sugerirProdutos({token:a,centro:'1025',deposito:'1',termo:'2000'}).itens.length,0);
 fail(()=>count(a,'1000',2,l1),/encerrada/);
 let second=env.abrirProximaRodada({token,centro:'1025',deposito:'1'});assert.equal(second.alvos,2);
@@ -111,6 +124,9 @@ count(b,'1000',10,l1);count(b,'3000',0);
 const duringSecond=env.painel({token,acompanhamento:{centro:'1025',deposito:'1'}}).acompanhamento;
 assert.equal(duringSecond.itens.find(x=>x.codigo==='1000').rodadas[1],'EM_CONTAGEM');
 assert.equal(env.sugerirProdutos({token:a,centro:'1025',deposito:'1',termo:'1000'}).itens.length,0, 'não mostrar SKU proibido em segunda rodada');
+assert.equal(env.catalogoProdutos({token:a,centro:'1025',deposito:'1'}).itens.length,0,'contador anterior não pode buscar SKU novamente');
+assert.equal(env.catalogoProdutos({token:b,centro:'1025',deposito:'1'}).itens.length,2,'segundo contador pode buscar divergentes');
+
 assert.equal(env.sugerirProdutos({token:b,centro:'1025',deposito:'1',termo:'1000'}).itens.length,1);
 assert.equal(env.encerrarRodada({token,rodada_id:second.rodada_id}).divergentes,1);
 const closedSecond=env.painel({token,acompanhamento:{centro:'1025',deposito:'1'}}).acompanhamento;

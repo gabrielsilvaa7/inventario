@@ -1,13 +1,25 @@
 /* Inventário Friovix — Cliente GitHub Pages. Nenhum segredo é colocado neste arquivo. */
 'use strict';
 const $=id=>document.getElementById(id);
-const state={bridgeWindow:null,bridgeOrigin:'',channel:'',ready:false,pending:new Map(),token:sessionStorage.getItem('inventario_session')||'',usuario:null,context:null,product:null,dashboard:null,requestId:null,tab:'contagem',productPage:1,suggestionSequence:0,suggestionTimer:null,suggestions:[],suggestionActive:-1};
+const state={bridgeWindow:null,bridgeOrigin:'',channel:'',ready:false,pending:new Map(),token:sessionStorage.getItem('inventario_session')||'',usuario:null,context:null,product:null,dashboard:null,requestId:null,tab:'contagem',productPage:1,suggestionSequence:0,suggestionTimer:null,suggestions:[],suggestionActive:-1,catalogCache:new Map(),catalogPending:new Map(),catalogUnsupported:false,catalogSignature:'',dashboardLoading:false,dashboardQueued:'',followupSeq:0,followupTimer:null};
 const safe=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const num=v=>new Intl.NumberFormat('pt-BR',{maximumFractionDigits:3}).format(Number(v)||0);
 const random=()=>typeof crypto!=='undefined'&&crypto.randomUUID?crypto.randomUUID():String(Date.now())+'-'+Math.random().toString(36).slice(2);
 function toast(msg,type=''){const t=$('toast');t.textContent=msg;t.className='toast '+type;t.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.hidden=true,6000);}
 function show(page){for(const id of ['connecting','loginPage','appPage'])$(id).hidden=id!==page;}
-function btnBusy(button,busy,text){if(!button)return;button.disabled=busy;if(busy){button.dataset.oldText=button.textContent;button.textContent=text||'Processando...';}else button.textContent=button.dataset.oldText||button.textContent;}
+function btnBusy(button,busy,text){
+  if(!button)return;
+  if(busy){
+    if(!button.classList.contains('is-busy'))button.dataset.oldText=button.textContent;
+    button.disabled=true;button.classList.add('is-busy');
+    button.innerHTML='<span class="mini-spinner" aria-hidden="true"></span>'+safe(text||'Processando...');
+    button.setAttribute('aria-busy','true');
+  }else{
+    button.classList.remove('is-busy');button.disabled=false;
+    button.textContent=button.dataset.oldText||button.textContent;
+    button.removeAttribute('aria-busy');
+  }
+}
 function bridgeCall(method,payload={},timeout=120000){if(!state.ready)return Promise.reject(new Error('Backend ainda não conectado.'));
   const id=random();return new Promise((resolve,reject)=>{const timeoutId=setTimeout(()=>{state.pending.delete(id);reject(new Error('O servidor demorou para responder. Consulte o supervisor antes de reenviar a contagem.'));},timeout);
     state.pending.set(id,{resolve,reject,timeoutId});state.bridgeWindow.postMessage({app:'inventario-sap',channel:state.channel,type:'request',id,method,payload},state.bridgeOrigin);
@@ -36,15 +48,28 @@ function initBridge(){const url=window.INVENTARIO_CONFIG&&window.INVENTARIO_CONF
   }catch(err){$('connectingMessage').textContent='Configuração inválida: '+err.message;return;}
   setTimeout(()=>{if(!state.ready){$('connectingMessage').textContent='Não foi possível carregar o Apps Script. Confirme a implantação, a permissão "Qualquer pessoa", WEB_ORIGIN e o URL /exec. Verifique também bloqueios de iframe/cookies do navegador.';}},25000);
 }
-async function enterApp(){show('appPage');$('accountLabel').textContent=state.usuario.nome+' · '+state.usuario.perfil;applyRole();await refreshContext();if(canSupervise()){await refreshDashboard();}if(state.usuario.perfil==='ADMIN'){await refreshUsers();await refreshEnvironment();}}
+async function enterApp(){
+  show('appPage');$('accountLabel').textContent=state.usuario.nome+' · '+state.usuario.perfil;
+  applyRole();await refreshContext();
+  // Dashboard volumoso é carregado somente quando solicitado; login/contagem ficam mais rápidos.
+  if(state.usuario.perfil==='ADMIN')await Promise.all([refreshUsers(),refreshEnvironment()]);
+  if((state.tab==='painel'||state.tab==='supervisao')&&canSupervise())await refreshDashboard();
+}
 function canSupervise(){return state.usuario&&['ADMIN','SUPERVISOR'].includes(state.usuario.perfil);}
 function applyRole(){document.querySelectorAll('.supervisor-only').forEach(n=>n.classList.toggle('hidden-role',!canSupervise()));document.querySelectorAll('.admin-only').forEach(n=>n.classList.toggle('hidden-role',state.usuario.perfil!=='ADMIN'));}
 function switchTab(tab){if((tab==='painel'||tab==='supervisao')&&!canSupervise())return;if(tab==='usuarios'&&state.usuario?.perfil!=='ADMIN')return;state.tab=tab;
-  document.querySelectorAll('.tab').forEach(n=>n.classList.toggle('active',n.dataset.tab===tab));document.querySelectorAll('.page').forEach(n=>n.classList.toggle('active',n.id==='tab-'+tab));}
-async function refreshContext(){state.context=await api('carregarContexto');$('inventoryName').textContent='Controle físico de estoque';renderModeBadge(state.context.modo);
+  document.querySelectorAll('.tab').forEach(n=>n.classList.toggle('active',n.dataset.tab===tab));document.querySelectorAll('.page').forEach(n=>n.classList.toggle('active',n.id==='tab-'+tab));
+  if((tab==='painel'||tab==='supervisao')&&!state.dashboard)refreshDashboard();}
+async function refreshContext(){
+  const next=await api('carregarContexto');
+  const signature=JSON.stringify([next.inventario?.id,(next.setores||[]).map(x=>[x.centro,x.deposito,x.rodada_id,x.status])]);
+  if(signature!==state.catalogSignature){state.catalogCache.clear();state.catalogPending.clear();state.catalogSignature=signature;}
+  state.context=next;
+  $('inventoryName').textContent='Controle físico de estoque';renderModeBadge(state.context.modo);
   const prev=$('sectorSelect').value;$('sectorSelect').innerHTML='<option value="">Selecione centro e depósito...</option>'+state.context.setores.map(x=>`<option value="${safe(x.centro+'|'+x.deposito)}">Centro ${safe(x.centro)} · Depósito ${safe(x.deposito||'Não informado')}</option>`).join('');
   if([...$('sectorSelect').options].some(x=>x.value===prev))$('sectorSelect').value=prev;
   renderDashboardSectorOptions();
+  if($('sectorSelect').value)preloadCatalog();
 }
 function renderModeBadge(mode){
   const badge=$('modeBadge');badge.textContent='Modo: '+(mode==='OFICIAL'?'OFICIAL':'TESTE');
@@ -123,6 +148,51 @@ function hideSuggestions(){
   state.suggestions=[];state.suggestionActive=-1;
   $('productSuggestions').hidden=true;$('productSuggestions').innerHTML='';
   $('productCode').setAttribute('aria-expanded','false');
+  $('productCode').removeAttribute('aria-activedescendant');
+}
+function suggestionMessage(message,loading=false){
+  state.suggestions=[];state.suggestionActive=-1;
+  const list=$('productSuggestions');
+  list.innerHTML='<div class="suggestion-message">'+(loading?'<span class="mini-spinner" aria-hidden="true"></span>':'')+'<span>'+safe(message)+'</span></div>';
+  list.hidden=false;$('productCode').setAttribute('aria-expanded','true');
+}
+function foldText(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();}
+function scopeCatalog(){
+  const selection=$('sectorSelect').value;if(!selection||!state.context)return null;
+  const [centro,deposito]=selection.split('|');
+  const round=state.context.setores.find(x=>String(x.centro)===centro&&String(x.deposito)===deposito);
+  return {key:[state.context.inventario?.id,state.usuario?.usuario,centro,deposito,round?.rodada_id].join('|'),selection,centro,deposito};
+}
+function preloadCatalog(){
+  const scope=scopeCatalog();if(!scope||state.catalogUnsupported)return Promise.resolve(null);
+  if(state.catalogCache.has(scope.key))return Promise.resolve(state.catalogCache.get(scope.key));
+  if(state.catalogPending.has(scope.key))return state.catalogPending.get(scope.key);
+  const promise=api('catalogoProdutos',{centro:scope.centro,deposito:scope.deposito},90000)
+    .then(data=>{
+      // Cada catálogo pertence a uma rodada e usuário específicos.
+      const rows=(data.itens||[]).map(p=>({...p,codeSearch:foldText(p.codigo),nameSearch:foldText(p.descricao)}));
+      if(scope.key===scopeCatalog()?.key)state.catalogCache.set(scope.key,rows);
+      else if(state.catalogSignature)state.catalogCache.set(scope.key,rows);
+      return rows;
+    })
+    .catch(err=>{
+      if(/M[eé]todo n[aã]o permitido|is not a function|Fun[cç][aã]o n[aã]o encontrada/i.test(err.message))state.catalogUnsupported=true;
+      return null;
+    }).finally(()=>state.catalogPending.delete(scope.key));
+  state.catalogPending.set(scope.key,promise);
+  return promise;
+}
+function localSuggestions(catalog,term){
+  const query=foldText(term),matches=[];
+  for(const item of catalog){
+    const c=item.codeSearch,n=item.nameSearch;
+    const score=c.startsWith(query)?0:c.includes(query)?1:n.startsWith(query)?2:n.includes(query)?3:99;
+    if(score===99)continue;
+    matches.push({score,item});
+  }
+  // Código exato/prefixo aparece antes de correspondências no meio da descrição.
+  matches.sort((a,b)=>a.score-b.score);
+  return matches.slice(0,12).map(x=>x.item);
 }
 function paintSuggestions(items){
   state.suggestions=items;state.suggestionActive=-1;
@@ -133,16 +203,25 @@ function paintSuggestions(items){
 function queueSuggestions(){
   const seq=++state.suggestionSequence;
   if(state.suggestionTimer)clearTimeout(state.suggestionTimer);
-  const term=$('productCode').value.trim(),selection=$('sectorSelect').value;
-  if(term.length<2||!selection){hideSuggestions();return;}
-  const [centro,deposito]=selection.split('|');
-  state.suggestionTimer=setTimeout(async()=>{
-    try{
-      const data=await api('sugerirProdutos',{centro,deposito,termo:term});
-      if(seq!==state.suggestionSequence||selection!==$('sectorSelect').value||term!==$('productCode').value.trim())return;
-      paintSuggestions(data.itens||[]);
-    }catch(err){if(seq===state.suggestionSequence)hideSuggestions();}
-  },260);
+  const term=$('productCode').value.trim(),scope=scopeCatalog();
+  if(term.length<2||!scope){hideSuggestions();return;}
+  const valid=()=>seq===state.suggestionSequence&&scope.selection===$('sectorSelect').value&&term===$('productCode').value.trim();
+  if(state.catalogCache.has(scope.key)){
+    paintSuggestions(localSuggestions(state.catalogCache.get(scope.key),term));return;
+  }
+  suggestionMessage('Carregando produtos do depósito…',true);
+  preloadCatalog().then(catalog=>{
+    if(!valid())return;
+    if(catalog){paintSuggestions(localSuggestions(catalog,term));return;}
+    // Compatibilidade com implantação antiga ou restrições de catálogo: pesquisa remota existente.
+    state.suggestionTimer=setTimeout(async()=>{
+      if(!valid())return;
+      try{
+        const data=await api('sugerirProdutos',{centro:scope.centro,deposito:scope.deposito,termo:term});
+        if(valid())paintSuggestions(data.itens||[]);
+      }catch(err){if(valid())suggestionMessage('Não foi possível pesquisar. Tente novamente.');}
+    },120);
+  });
 }
 async function pickSuggestion(code){
   $('productCode').value=code;
@@ -201,7 +280,7 @@ async function saveCount(event){event.preventDefault();const button=$('saveCount
   if(!state.requestId)state.requestId=random();
   const saved=await api('salvarContagem',{...d,request_id:state.requestId});
   $('lastSaved').hidden=false;$('lastSaved').textContent=(saved.duplicado?'Lançamento já recebido anteriormente.':'Lançamento registrado com sucesso!')+' Produto '+d.codigo+' · '+d.quantidade+' '+state.product.um+' · Rua '+(d.rua||'—')+' / Zona '+(d.zona||'—')+' / Posição '+(d.posicao||'—')+' / Palete '+(d.palete||'—')+'.';
-  toast('Contagem registrada e auditada!','success');state.requestId=null;$('quantity').value='';$('quantity').focus();
+  toast('Contagem registrada e auditada!','success');state.dashboard=null;state.requestId=null;$('quantity').value='';$('quantity').focus();
 }catch(err){toast(err.message,'error');}finally{btnBusy(button,false);button.disabled=!state.product;}}
 function fmtDate(x){const d=new Date(x);return Number.isFinite(d.getTime())?d.toLocaleString('pt-BR',{timeZone:'America/Manaus'}):String(x||'');}
 function paintDashboard(data){state.dashboard=data;const k=data.resumo;
@@ -219,7 +298,67 @@ function paintDashboard(data){state.dashboard=data;const k=data.resumo;
   paintFollowup(data.acompanhamento);
 }
 function getFilter(){return Object.fromEntries([['codigo','filterCode'],['centro','filterCenter'],['deposito','filterDepot'],['rua','filterRua'],['zona','filterZona'],['posicao','filterPosicao'],['palete','filterPalete']].map(([k,id])=>[k,$(id).value.trim()]));}
-async function refreshDashboard(){if(!canSupervise())return;try{const data=await api('painel',{filtro:getFilter(),acompanhamento:{centro:$('dashboardCenter').value,deposito:$('dashboardDepot').value,termo:$('dashboardQuery').value.trim(),pagina:state.productPage}});paintDashboard(data);}catch(err){toast('Dashboard: '+err.message,'error');}}
+function followupOptions(){return {centro:$('dashboardCenter').value,deposito:$('dashboardDepot').value,termo:$('dashboardQuery').value.trim(),pagina:state.productPage};}
+function followupLoading(active){
+  $('followupLoading').hidden=!active;
+  btnBusy($('searchFollowup'),active,'Filtrando…');
+  $('followupPrev').disabled=active||!state.dashboard?.acompanhamento||state.dashboard.acompanhamento.pagina<=1;
+  $('followupNext').disabled=active||!state.dashboard?.acompanhamento||state.dashboard.acompanhamento.pagina>=state.dashboard.acompanhamento.total_paginas;
+  $('progressOverview').setAttribute('aria-busy',String(active));
+  $('followupBody').setAttribute('aria-busy',String(active));
+}
+async function refreshFollowup(){
+  if(!canSupervise())return;
+  if(state.dashboardLoading){state.dashboardQueued='Atualizando dashboard…';return;}
+  if(!state.dashboard){return refreshDashboard();}
+  const seq=++state.followupSeq;
+  followupLoading(true);
+  try{
+    const data=await api('filtrarAcompanhamento',{acompanhamento:followupOptions()});
+    if(seq!==state.followupSeq)return;
+    state.dashboard.acompanhamento=data;paintFollowup(data);
+  }catch(err){
+    if(seq!==state.followupSeq)return;
+    if(/M[eé]todo n[aã]o permitido|is not a function|Fun[cç][aã]o n[aã]o encontrada/i.test(err.message)){
+      // Implantação anterior continua funcionando; apenas não terá o ganho do endpoint leve.
+      followupLoading(false);return refreshDashboard('Atualizando dashboard…');
+    }
+    toast('Filtragem de produtos: '+err.message,'error');
+  }finally{if(seq===state.followupSeq)followupLoading(false);}
+}
+function queueFollowup(){
+  state.followupSeq++;
+  if(state.followupTimer)clearTimeout(state.followupTimer);
+  followupLoading(true);
+  state.followupTimer=setTimeout(()=>{state.followupTimer=null;refreshFollowup();},110);
+}
+async function refreshDashboard(reason){
+  if(!canSupervise())return;
+  reason=typeof reason==='string'?reason:'Atualizando dashboard…';
+  if(state.dashboardLoading){state.dashboardQueued=reason;return;}
+  state.dashboardLoading=true;
+  state.followupSeq++;if(state.followupTimer){clearTimeout(state.followupTimer);state.followupTimer=null;}
+  const isFilter=reason==='Filtrando endereços…',filterBtn=$('filterForm').querySelector('button[type="submit"]');
+  $('dashboardStatusText').textContent=reason;$('dashboardStatus').hidden=false;
+  $('tab-painel').classList.add(isFilter?'is-filtering':'is-refreshing');
+  $('tab-painel').setAttribute('aria-busy','true');
+  $('locatorLoading').hidden=!isFilter;
+  followupLoading(!isFilter);
+  btnBusy(isFilter?filterBtn:$('refreshDashboard'),true,isFilter?'Pesquisando…':'Atualizando…');
+  try{
+    const data=await api('painel',{filtro:getFilter(),acompanhamento:followupOptions()});
+    paintDashboard(data);
+    $('dashboardUpdatedAt').textContent='Atualizado às '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  }catch(err){toast('Dashboard: '+err.message,'error');}
+  finally{
+    btnBusy(isFilter?filterBtn:$('refreshDashboard'),false);
+    $('tab-painel').classList.remove('is-filtering','is-refreshing');
+    $('tab-painel').setAttribute('aria-busy','false');$('dashboardStatus').hidden=true;
+    $('locatorLoading').hidden=true;followupLoading(false);
+    state.dashboardLoading=false;
+    if(state.dashboardQueued){const queued=state.dashboardQueued;state.dashboardQueued='';refreshDashboard(queued);}
+  }
+}
 async function doClose(roundId){if(!confirm('Encerrar esta rodada? Após o fechamento nenhum contador poderá lançar neste setor até a próxima rodada.'))return;
   try{const r=await api('encerrarRodada',{rodada_id:roundId},180000);toast(`Rodada ${r.numero} encerrada. ${r.materiais} materiais, ${r.divergentes} divergências.`,'success');await refreshContext();await refreshDashboard();resetProduct();}catch(err){toast(err.message,'error');}}
 async function doOpen(value){const [centro,deposito]=value.split('|');if(!confirm(`Abrir próxima rodada para Centro ${centro} / Depósito ${deposito}?`))return;
@@ -233,7 +372,7 @@ async function doCreateUser(event){event.preventDefault();const button=$('userFo
 }catch(err){toast(err.message,'error');}finally{btnBusy(button,false);}}
 async function saveSettings(){const value=$('allowSameCounter').checked?'SIM':'NAO';if(!confirm('Alterar a política de contadores entre rodadas?'))return;
   try{await api('atualizarConfiguracao',{chave:'PERMITIR_MESMO_CONTADOR_ENTRE_RODADAS',valor:value});toast('Configuração salva.','success');await refreshDashboard();}catch(err){toast(err.message,'error');}}
-async function logout(){try{await api('sair');}catch{}state.token='';state.usuario=null;state.product=null;sessionStorage.removeItem('inventario_session');show('loginPage');$('loginForm').reset();}
+async function logout(){try{await api('sair');}catch{}state.token='';state.usuario=null;state.product=null;state.catalogCache.clear();state.catalogPending.clear();state.catalogSignature='';state.dashboard=null;sessionStorage.removeItem('inventario_session');show('loginPage');$('loginForm').reset();}
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const button=$('loginButton');btnBusy(button,true,'Autenticando...');try{
   const res=await bridgeCall('entrar',{usuario:$('loginUser').value.trim(),senha:$('loginPass').value});state.token=res.token;state.usuario=res.usuario;
   sessionStorage.setItem('inventario_session',res.token);$('loginPass').value='';await enterApp();toast('Bem-vindo(a), '+res.usuario.nome+'!','success');
@@ -241,16 +380,16 @@ $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const butt
 $('logoutButton').addEventListener('click',logout);
 document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
 $('searchForm').addEventListener('submit',searchProduct);$('countForm').addEventListener('submit',saveCount);
-$('sectorSelect').addEventListener('change',()=>{resetProduct();$('productCode').value='';hideSuggestions();});$('productCode').addEventListener('input',()=>{resetProduct();queueSuggestions();});
+$('sectorSelect').addEventListener('change',()=>{resetProduct();$('productCode').value='';hideSuggestions();preloadCatalog();});$('productCode').addEventListener('input',()=>{resetProduct();queueSuggestions();});
 $('countForm').addEventListener('input',()=>state.requestId=null);
-$('filterForm').addEventListener('submit',async e=>{e.preventDefault();await refreshDashboard();});
+$('filterForm').addEventListener('submit',async e=>{e.preventDefault();await refreshDashboard('Filtrando endereços…');});
 $('refreshDashboard').addEventListener('click',refreshDashboard);
-$('dashboardCenter').addEventListener('change',()=>{state.productPage=1;renderDashboardSectorOptions(true);refreshDashboard();});
-$('dashboardDepot').addEventListener('change',()=>{state.productPage=1;refreshDashboard();});
-$('searchFollowup').addEventListener('click',()=>{state.productPage=1;refreshDashboard();});
-$('dashboardQuery').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();state.productPage=1;refreshDashboard();}});
-$('followupPrev').addEventListener('click',()=>{if(state.productPage>1){state.productPage--;refreshDashboard();}});
-$('followupNext').addEventListener('click',()=>{if(state.productPage<(state.dashboard?.acompanhamento?.total_paginas||1)){state.productPage++;refreshDashboard();}});
+$('dashboardCenter').addEventListener('change',()=>{state.productPage=1;renderDashboardSectorOptions(true);queueFollowup();});
+$('dashboardDepot').addEventListener('change',()=>{state.productPage=1;queueFollowup();});
+$('searchFollowup').addEventListener('click',()=>{state.productPage=1;refreshFollowup();});
+$('dashboardQuery').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();state.productPage=1;refreshFollowup();}});
+$('followupPrev').addEventListener('click',()=>{if(state.productPage>1){state.productPage--;refreshFollowup();}});
+$('followupNext').addEventListener('click',()=>{if(state.productPage<(state.dashboard?.acompanhamento?.total_paginas||1)){state.productPage++;refreshFollowup();}});
 $('productCode').addEventListener('keydown',suggestionsKeydown);
 $('productCode').addEventListener('focus',()=>{if($('productCode').value.trim().length>=2)queueSuggestions();});
 $('productSuggestions').addEventListener('pointerdown',e=>{const b=e.target.closest('[data-suggest-code]');if(!b)return;e.preventDefault();pickSuggestion(b.dataset.suggestCode);});

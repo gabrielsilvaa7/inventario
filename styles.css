@@ -63,3 +63,19 @@
 .followup-pagination>div{display:flex;align-items:center;gap:12px}
 @media(max-width:900px){.progress-overview{grid-template-columns:repeat(2,minmax(0,1fr))}.followup-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.progress-overview{gap:9px}.progress-tile{padding:12px}.progress-tile>strong{font-size:1.3rem}.followup-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.followup-filters label:nth-child(3){grid-column:span 2}.followup-filters button{grid-column:span 2}.followup-pagination{align-items:start}}
+
+/* Feedback claro para chamadas assíncronas e busca local. */
+@keyframes friovix-rotate{to{transform:rotate(360deg)}}
+.mini-spinner{width:16px;height:16px;border:2px solid #b9c9dc;border-top-color:#275b89;border-radius:50%;display:inline-block;flex:none;animation:friovix-rotate .75s linear infinite}
+.btn .mini-spinner{width:14px;height:14px;border-top-color:currentColor;border-left-color:transparent;margin-right:8px;vertical-align:-2px}
+.btn.primary .mini-spinner{border-color:#ffffff66;border-top-color:#fff}
+.btn.is-busy{cursor:progress;opacity:.85}
+.operation-status{display:flex;align-items:center;gap:10px;padding:12px 15px;border-radius:10px;border:1px solid #caddf0;background:#edf5ff;color:#214b77;margin:4px 0 18px;font-size:.86rem;font-weight:650}
+.operation-status.secondary-status{margin:12px 0;background:#f4f8fd;font-size:.81rem}
+.suggestion-message{display:flex;gap:10px;align-items:center;padding:14px;color:#586b7d;font-size:.83rem;min-height:45px}
+.is-refreshing .stats,.is-refreshing #locationsBody,.is-refreshing #sectorsBody,.is-refreshing #approvalsBody,.is-refreshing #followupBody{opacity:.58;transition:opacity .12s}
+.is-filtering #locationsBody,.is-filtering #locationCount,.is-filtering #followupBody,.is-filtering #progressOverview{opacity:.58;transition:opacity .12s}
+@media(prefers-reduced-motion:reduce){.mini-spinner{animation-duration:1.5s}.is-refreshing .stats,.is-filtering #locationsBody{transition:none}}
+
+.dashboard-actions{display:flex;align-items:center;gap:12px;justify-content:flex-end;flex-wrap:wrap}
+@media(max-width:650px){.dashboard-actions{justify-content:flex-start}.dashboard-actions .tiny{order:2;width:100%}}
