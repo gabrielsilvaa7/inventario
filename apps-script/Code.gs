@@ -68,6 +68,32 @@ function targetForRound_(round,base,results){if(Number(round.numero)===1)return 
 function inventoryBase_(inv,center,depot){return table_('BASE_ESTOQUE').filter(x=>x.inventario_id===inv&&(center===undefined||center===null||str_(x.centro)===str_(center))&&(depot===undefined||depot===null||str_(x.deposito)===str_(depot)));}
 function latestResultsMap_(results){const m=new Map();for(const r of results){const k=normalizeKey_(r.codigo,r.centro,r.deposito),prev=m.get(k);if(!prev||Number(r.numero)>Number(prev.numero))m.set(k,r);}return m;}
 function getConfig_(k){const r=table_('CONFIG').find(x=>x.chave===k);return r?str_(r.valor):str_(DEFAULT_CONFIG[k]);}
+
+/** Recontagem de um mesmo material depende de liberação NOMINAL, não do parâmetro global legado. */
+function podeRecontarUsuario_(usuario){
+  return getConfig_('PERMITIR_RECONTAGEM_USUARIO_'+norm_(usuario))==='SIM';
+}
+function listarPermissoesContadores(d){
+  const u=auth_(d.token);requireSupervisor_(u);
+  const prefix='PERMITIR_RECONTAGEM_USUARIO_';
+  const permissoes=new Map(table_('CONFIG').filter(x=>str_(x.chave).startsWith(prefix)).map(x=>[str_(x.chave).slice(prefix.length),norm_(x.valor)]));
+  return table_('USUARIOS').filter(x=>x.perfil==='CONTADOR'&&x.ativo==='SIM')
+    .map(x=>({usuario:str_(x.usuario),nome:str_(x.nome),permitido:permissoes.get(str_(x.usuario))==='SIM'}))
+    .sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
+}
+function definirPermissaoContador(d){return withLock_(()=>{
+  const u=auth_(d.token);requireSupervisor_(u);
+  const username=norm_(d.usuario),permitido=d.permitido;
+  if(typeof permitido!=='boolean')throw Error('Permissão inválida: informe verdadeiro ou falso.');
+  const target=table_('USUARIOS').find(x=>x.usuario===username&&x.perfil==='CONTADOR'&&x.ativo==='SIM');
+  if(!target)throw Error('Contador não encontrado ou inativo.');
+  const key='PERMITIR_RECONTAGEM_USUARIO_'+username,value=permitido?'SIM':'NAO';
+  const rows=table_('CONFIG'),i=rows.findIndex(x=>x.chave===key),previous=i>=0?norm_(rows[i].valor):'NAO';
+  if(i>=0)sh_('CONFIG').getRange(i+2,2).setValue(value);else appendMany_('CONFIG',[[key,value]]);
+  writeAudit_(u.usuario,'PERMISSAO_RECONTAGEM_USUARIO','USUARIO',username,{anterior:previous,atual:value});
+  return {ok:true,usuario:username,permitido};
+});}
+
 function modoOperacao_(){
   const value=norm_(prop_('INVENTARIO_MODO')||MODO_TESTE);
   if(![MODO_TESTE,MODO_OFICIAL].includes(value))throw Error('Modo do inventário inválido. Consulte a administração.');
@@ -330,7 +356,7 @@ function consultarProduto(d){exigirSemLimpeza_();const u=auth_(d.token),inv=acti
   const p=inventoryBase_(inv.inventario_id,center,depot).find(x=>str_(x.codigo)===code);if(!p)throw Error('Código não encontrado na base SAP deste centro e depósito.');
   const targets=targetForRound_(r,inventoryBase_(inv.inventario_id,center,depot),resultadosAtivos_());
   if(!targets.some(x=>str_(x.codigo)===code))throw Error('Este material já foi conferido ou não pertence à rodada atual.');
-  if(getConfig_('PERMITIR_MESMO_CONTADOR_ENTRE_RODADAS')!=='SIM'&&Number(r.numero)>1){
+  if(!podeRecontarUsuario_(u.usuario)&&Number(r.numero)>1){
     const olderIds=new Set(rounds.filter(x=>Number(x.numero)<Number(r.numero)).map(x=>x.rodada_id));
     if(table_('CONTAGENS').some(x=>olderIds.has(x.rodada_id)&&str_(x.codigo)===code&&x.usuario===u.usuario))throw Error('Você já contou este material em rodada anterior. Solicite outro contador.');
   }
@@ -353,7 +379,7 @@ function catalogoProdutos(d){
     .map(row=>({codigo:str_(row[2]),descricao:str_(row[3]),um:str_(row[4]),centro:str_(row[5]),deposito:str_(row[6])}));
   const alvos=Number(rodada.numero)===1?base:targetForRound_(rodada,base,resultadosAtivos_());
   let jaContados=new Set();
-  if(Number(rodada.numero)>1&&getConfig_('PERMITIR_MESMO_CONTADOR_ENTRE_RODADAS')!=='SIM'){
+  if(Number(rodada.numero)>1&&!podeRecontarUsuario_(u.usuario)){
     const anteriores=new Set(rodadas.filter(r=>Number(r.numero)<Number(rodada.numero)).map(r=>str_(r.rodada_id)));
     jaContados=new Set(table_('CONTAGENS').filter(c=>c.usuario===u.usuario&&anteriores.has(str_(c.rodada_id))).map(c=>str_(c.codigo)));
   }
@@ -387,7 +413,7 @@ function sugerirProdutos(d){
   if(!r||r.status!=='ABERTA')return {itens:[],limite:12};
   const base=inventoryBase_(inv.inventario_id,center,depot);
   const targets=targetForRound_(r,base,resultadosAtivos_());
-  const past=Number(r.numero)>1&&getConfig_('PERMITIR_MESMO_CONTADOR_ENTRE_RODADAS')!=='SIM'
+  const past=Number(r.numero)>1&&!podeRecontarUsuario_(u.usuario)
     ?new Set(table_('CONTAGENS').filter(x=>x.usuario===u.usuario&&rounds.some(z=>z.rodada_id===x.rodada_id&&Number(z.numero)<Number(r.numero))).map(x=>str_(x.codigo)))
     :new Set();
   const itens=[];
@@ -416,7 +442,7 @@ function salvarContagem(d){return withLock_(()=>{
   if(Math.abs(qty*Math.pow(10,precision)-Math.round(qty*Math.pow(10,precision)))>0.000001)throw Error('Unidade '+um+' aceita no máximo '+precision+' casa(s) decimal(is).');
   if(qty>0&&['rua','zona','posicao','palete'].some(k=>str_(d[k])===''))throw Error('Informe Rua, Zona, Posição e Palete.');
   const location=['rua','zona','posicao','palete'].map(k=>qty===0&&str_(d[k])===''?'':integer_(d[k],k));
-  if(getConfig_('PERMITIR_MESMO_CONTADOR_ENTRE_RODADAS')!=='SIM'&&Number(r.numero)>1){const prevIds=new Set(rounds.filter(x=>Number(x.numero)<Number(r.numero)).map(x=>x.rodada_id));if(table_('CONTAGENS').some(x=>prevIds.has(x.rodada_id)&&x.codigo===code&&x.usuario===u.usuario))throw Error('Outro contador deve realizar esta rodada.');}
+  if(!podeRecontarUsuario_(u.usuario)&&Number(r.numero)>1){const prevIds=new Set(rounds.filter(x=>Number(x.numero)<Number(r.numero)).map(x=>x.rodada_id));if(table_('CONTAGENS').some(x=>prevIds.has(x.rodada_id)&&x.codigo===code&&x.usuario===u.usuario))throw Error('Outro contador deve realizar esta rodada.');}
   const id=uuid_();appendMany_('CONTAGENS',[[id,req,r.rodada_id,inv.inventario_id,code,center,depot,...location,qty,u.usuario,iso_()]]);
   writeAudit_(u.usuario,'CONTAGEM_REGISTRADA','CONTAGEM',id,{codigo:code,centro:center,deposito:depot,rodada:Number(r.numero),quantidade:qty,rua:location[0],zona:location[1],posicao:location[2],palete:location[3]});
   return {ok:true,duplicado:false,lancamento_id:id};
@@ -495,7 +521,7 @@ function acompanharProdutos_(base,counts,results,rounds,filter){
     const s=statusByKey.get(p.chave)||{},seen=countedByKey.get(p.chave)||{};
     const roundsStatus=[1,2,3].map(n=>{
       if(s[n]==='CONFERIDO')return 'CONFERIDO';
-      if(s[n]==='DIVERGENTE')return n===1?'SEGUNDA_CONTAGEM':'DIVERGENTE';
+      if(s[n]==='DIVERGENTE')return n<3?'SEGUNDA_CONTAGEM':'DIVERGENTE';
       return seen[n]?'EM_CONTAGEM':'PENDENTE';
     });
     if(Object.keys(seen).length)contados++;
@@ -644,13 +670,10 @@ function cadastrarUsuario(d){return withLock_(()=>{
   const salt=random_();appendMany_('USUARIOS',[[uuid_(),username,name,role,'SIM',salt,passHash_(pass,salt),iso_()]]);
   writeAudit_(u.usuario,'USUARIO_CRIADO','USUARIO',username,{perfil:role});return {ok:true};
 });}
-function atualizarConfiguracao(d){return withLock_(()=>{
-  const u=auth_(d.token);requireSupervisor_(u);if(d.chave!=='PERMITIR_MESMO_CONTADOR_ENTRE_RODADAS')throw Error('Configuração desconhecida.');
-  const value=norm_(d.valor);if(!['SIM','NAO'].includes(value))throw Error('Valor inválido.');
-  const data=table_('CONFIG'),idx=data.findIndex(x=>x.chave===d.chave),old=idx>=0?data[idx].valor:'';
-  if(idx>=0)sh_('CONFIG').getRange(idx+2,2).setValue(value);else appendMany_('CONFIG',[[d.chave,value]]);
-  writeAudit_(u.usuario,'CONFIG_ALTERADA','CONFIG',d.chave,{antes:old,depois:value});return {ok:true,valor:value};
-});}
+function atualizarConfiguracao(d){
+  const u=auth_(d.token);requireSupervisor_(u);
+  throw Error('A permissão de recontagem agora é individual. Utilize as configurações por contador.');
+}
 
 /** GitHub Pages usa esta ponte HTML (Google.script.run exige origem Apps Script). */
 function doGet(e){

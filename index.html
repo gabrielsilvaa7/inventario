@@ -87,9 +87,14 @@
           <div class="gauge-visual" aria-live="polite">
             <svg viewBox="0 0 240 138" class="gauge-svg" aria-hidden="true">
               <path d="M 25 116 A 95 95 0 0 1 215 116" class="gauge-track" fill="none" stroke-width="20" stroke-linecap="round"></path>
-              <path id="gaugeFill" d="M 25 116 A 95 95 0 0 1 215 116" class="gauge-fill" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100" fill="none" stroke-width="20" stroke-linecap="round"></path>
+              <path id="gaugeZoneLow" class="gauge-segment low" d="" stroke-width="19" fill="none"></path>
+              <path id="gaugeZoneMid" class="gauge-segment mid" d="" stroke-width="19" fill="none"></path>
+              <path id="gaugeZoneHigh" class="gauge-segment high" d="" stroke-width="19" fill="none"></path>
+              <line id="gaugeNeedle" class="gauge-needle" x1="120" y1="116" x2="26" y2="116" stroke-width="3.8" stroke-linecap="round"></line>
+              <circle cx="120" cy="116" r="7.5" class="gauge-hub"></circle>
             </svg>
             <div class="gauge-number"><strong id="gaugePercent">0%</strong><span id="gaugeFraction">0 de 0 produtos contados</span></div>
+            <div class="gauge-scale" aria-label="Escala de cores do velocímetro"><span><i class="gauge-key low"></i>0–35%</span><span><i class="gauge-key mid"></i>35–65%</span><span><i class="gauge-key high"></i>65–100%</span></div>
           </div>
         </article>
         <article class="panel progress-panel">
@@ -111,8 +116,8 @@
           <div class="progress-overview" id="progressOverview" aria-live="polite"></div>
           <div class="round-legend" aria-label="Legenda das contagens">
             <span><i class="round-dot passed"></i> Estoque conferido</span>
-            <span><i class="round-dot warning"></i> Segunda contagem</span>
-            <span><i class="round-dot failed"></i> Divergência / próxima rodada</span>
+            <span><i class="round-dot warning"></i> Segunda / Terceira contagem</span>
+            <span><i class="round-dot failed"></i> Divergência de Estoque</span>
             <span><i class="round-dot active"></i> Em contagem</span>
           </div>
           <div class="table-wrap"><table class="followup-table"><thead><tr><th>Código</th><th>Descrição do produto</th><th>Centro</th><th>Depósito</th><th>1ª contagem</th><th>2ª contagem</th><th>3ª contagem</th><th>Situação final</th></tr></thead><tbody id="followupBody"><tr><td colspan="8" class="empty">Aguardando dados...</td></tr></tbody></table></div>
@@ -140,7 +145,13 @@
         <div class="heading"><div><div class="eyebrow">GESTÃO DE RODADAS</div><h2>Supervisão</h2><p>O encerramento exige contagem de todos os itens-alvo. Uma rodada encerrada por engano pode ser reaberta mediante justificativa, desde que não exista rodada posterior nem aprovação de divergência.</p></div></div>
         <article class="panel"><h3>Status por centro e depósito</h3><div class="table-wrap"><table><thead><tr><th>Centro</th><th>Depósito</th><th>Rodada</th><th>Status</th><th>Contados</th><th>Faltantes</th><th>Ação</th></tr></thead><tbody id="sectorsBody"></tbody></table></div></article>
         <article class="panel"><h3>Divergências aguardando aprovação</h3><p class="hint">As divergências finais só aparecem após o encerramento da terceira rodada. A aprovação não realiza lançamento contábil no SAP.</p><div class="table-wrap"><table><thead><tr><th>Código</th><th>Centro</th><th>Depósito</th><th>SAP</th><th>Físico</th><th>Diferença</th><th>Ação</th></tr></thead><tbody id="approvalsBody"></tbody></table></div></article>
-        <article class="panel"><div class="panel-head"><h3>Configurações operacionais</h3></div><label class="switch-row"><input type="checkbox" id="allowSameCounter"><span>Permitir que o mesmo contador realize rodadas posteriores do mesmo material</span></label><button type="button" id="saveSettings" class="btn secondary">Salvar configuração</button></article>
+        <article class="panel" id="counterPermissionsPanel">
+          <div class="panel-head"><div><h3>Configurações operacionais</h3><p class="hint">Libere individualmente quais contadores podem contar novamente o mesmo material em rodadas posteriores. A regra padrão é exigir outro contador.</p></div><button type="button" id="refreshCounterPermissions" class="btn secondary small">Atualizar lista</button></div>
+          <label for="counterPermissionSearch" class="counter-search-label">Pesquisar contador por nome ou usuário</label>
+          <input type="search" id="counterPermissionSearch" class="counter-search" placeholder="Digite o nome ou usuário do contador…" autocomplete="off">
+          <div id="counterPermissionStatus" class="operation-status secondary-status" role="status" aria-live="polite" hidden><span class="mini-spinner" aria-hidden="true"></span><span>Carregando permissões dos contadores…</span></div>
+          <div id="counterPermissionList" class="counter-permission-list" aria-live="polite"><p class="hint">Abra a aba Supervisão para carregar a equipe.</p></div>
+        </article>
       </section>
 
       <section class="page" id="tab-usuarios">
@@ -174,6 +185,16 @@
       </section>
     </div>
   </main>
+  <dialog id="roundActionDialog" class="round-action-dialog" aria-labelledby="roundDialogTitle" aria-describedby="roundDialogText">
+    <div class="round-dialog-head"><span class="round-dialog-icon" aria-hidden="true">✓</span><div><span class="eyebrow">CONFIRMAÇÃO DE SUPERVISÃO</span><h2 id="roundDialogTitle">Confirmar operação</h2></div></div>
+    <p id="roundDialogText"></p>
+    <div class="round-dialog-details"><div><span>Responsável</span><strong id="roundDialogUser">—</strong></div><div><span>Local</span><strong id="roundDialogSector">—</strong></div></div>
+    <label id="roundDialogReasonWrap" class="round-dialog-reason" hidden>Motivo da reabertura (obrigatório; mínimo de 10 caracteres)
+      <textarea id="roundDialogReason" rows="3" maxlength="500" placeholder="Explique por que a contagem precisa ser reaberta..."></textarea>
+    </label>
+    <div id="roundDialogStatus" class="operation-status secondary-status" role="status" aria-live="polite" hidden><span class="mini-spinner" aria-hidden="true"></span><span id="roundDialogStatusText">Processando a operação…</span></div>
+    <div class="round-dialog-actions"><button type="button" class="btn secondary" id="roundDialogCancel">Cancelar</button><button type="button" class="btn primary" id="roundDialogConfirm">Confirmar</button></div>
+  </dialog>
   <script src="config.js"></script><script src="app.js"></script>
 </body>
 </html>

@@ -120,3 +120,64 @@
 .recount-export-buttons .btn{white-space:nowrap}
 @media(max-width:850px){.gauge-panel{flex-direction:column;align-items:stretch;gap:6px}.gauge-visual{margin:0 auto}.recount-export-panel{flex-direction:column;align-items:stretch}.recount-export-buttons .btn{flex:1;white-space:normal}}
 @media(max-width:440px){.recount-export-buttons{flex-direction:column;align-items:stretch}.recount-export-buttons .btn{width:100%}}
+
+
+/* Inventário Friovix v8 — velocímetro progressivo de 3 faixas e ponteiro. */
+.gauge-panel{min-height:250px}
+.gauge-visual{width:290px;min-width:245px;height:auto;padding-bottom:5px}
+.gauge-svg{height:149px;overflow:visible}
+.gauge-segment{stroke-linecap:butt;stroke-linejoin:round}
+.gauge-segment.low{stroke:#d95d58}
+.gauge-segment.mid{stroke:#e6ac3f}
+.gauge-segment.high{stroke:#18865a}
+.gauge-needle{stroke:#263e59;filter:drop-shadow(0 1px 2px #19293f4b)}
+.gauge-hub{fill:#263e59;stroke:#fff;stroke-width:2}
+.gauge-number{position:static;margin-top:0}
+.gauge-number strong{font-size:1.9rem}
+.gauge-scale{display:flex;justify-content:center;align-items:center;gap:10px;margin-top:12px;font-size:.69rem;color:var(--muted);white-space:nowrap}
+.gauge-scale span{display:inline-flex;align-items:center;gap:4px}
+.gauge-key{height:9px;width:9px;border-radius:50%;display:inline-block}
+.gauge-key.low{background:#d95d58}.gauge-key.mid{background:#e6ac3f}.gauge-key.high{background:#18865a}
+
+/* Pesquisa e autorização individual de contadores. */
+.counter-search-label{display:block;font-size:.82rem;font-weight:750;margin:14px 0 7px}
+.counter-search{width:100%;max-width:470px;border:1px solid #cad5e3;border-radius:9px;padding:12px;background:#fff;color:var(--ink);font:inherit}
+.counter-search:focus{outline:2px solid #80a4d6;outline-offset:1px}
+.counter-permission-list{display:grid;gap:8px;max-height:380px;overflow-y:auto;margin-top:15px;padding-right:3px}
+.counter-permission-row{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px 13px;border:1px solid #e1e8f0;border-radius:10px;background:#f9fbfe;transition:opacity .16s,background .16s}
+.counter-permission-row:hover{background:#f3f7fc}
+.counter-permission-row.permission-saving{opacity:.55;pointer-events:none}
+.counter-person{display:grid;gap:4px;flex:1;min-width:0}
+.counter-person strong{font-size:.9rem;overflow-wrap:anywhere}
+.counter-person small{color:var(--muted)}
+.counter-permission-label{font-size:.76rem;color:var(--muted);font-weight:600}
+.counter-permission-row input{width:20px;height:20px;accent-color:var(--good);flex-shrink:0;cursor:pointer}
+
+/* Confirmação central do encerramento/reabertura/abertura, com estado de processamento. */
+.round-action-dialog{border:0;border-radius:18px;padding:27px;width:min(520px,calc(100% - 32px));max-width:520px;max-height:calc(100vh - 36px);overflow-y:auto;background:#fff;color:var(--ink);box-shadow:0 30px 100px #07162b99}
+.round-action-dialog[open]{animation:round-dialog-in .19s ease-out}
+.round-action-dialog::backdrop{background:rgba(7,20,38,.64);backdrop-filter:blur(3px)}
+.round-dialog-head{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+.round-dialog-head h2{font-size:1.45rem;margin:0}
+.round-dialog-head .eyebrow{margin:0 0 3px}
+.round-dialog-icon{display:grid;place-items:center;width:43px;height:43px;background:#fcecdc;color:#b65a2b;border-radius:13px;font-weight:850;font-size:23px;flex-shrink:0}
+.round-action-dialog p{font-size:.93rem;line-height:1.6}
+.round-dialog-details{display:grid;grid-template-columns:1fr 1fr;gap:12px;background:#f4f7fb;border-radius:10px;padding:14px;margin:16px 0}
+.round-dialog-details>div{display:grid;gap:5px;min-width:0}
+.round-dialog-details span{font-size:.73rem;color:var(--muted)}
+.round-dialog-details strong{overflow-wrap:anywhere;font-size:.87rem}
+.round-dialog-reason{display:grid;gap:7px;font-size:.85rem;font-weight:750;margin-bottom:14px}
+.round-dialog-reason textarea{resize:vertical;width:100%;border:1px solid #cad5e3;border-radius:9px;padding:12px;font:inherit;min-height:80px}
+.round-dialog-reason textarea:focus{outline:2px solid #80a4d6;outline-offset:1px}
+.round-dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}
+.round-dialog-actions .btn{min-width:140px}
+@keyframes round-dialog-in{from{opacity:0;transform:translateY(12px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(max-width:600px){
+  .gauge-panel{min-height:0}.gauge-visual{width:min(290px,100%);min-width:0}
+  .counter-permission-label{display:none}
+  .round-action-dialog{padding:21px}
+  .round-dialog-details{grid-template-columns:1fr}
+  .round-dialog-actions{flex-direction:column-reverse}
+  .round-dialog-actions .btn{width:100%}
+}
+@media(prefers-reduced-motion:reduce){.round-action-dialog[open]{animation:none}}

@@ -197,6 +197,21 @@ let second=env.abrirProximaRodada({token,centro:'1025',deposito:'1'});assert.equ
 fail(()=>env.reabrirRodada({token,rodada_id:firstRound,motivo:'Há mais produtos a registrar na primeira'}),/posterior/);
 fail(()=>env.consultarProduto({token:b,centro:'1025',deposito:'1',codigo:'2000'}),/já foi conferido/);
 fail(()=>count(a,'1000',10,l1),/Outro contador/);
+// Permissão nominal de recontagem: somente quem foi liberado, com auditoria.
+fail(()=>env.listarPermissoesContadores({token:a}),/supervisor/);
+const permissaoAntes=env.listarPermissoesContadores({token});
+assert.equal(permissaoAntes.filter(x=>x.permitido).length,0);
+fail(()=>env.definirPermissaoContador({token:a,usuario:'CONTA',permitido:true}),/supervisor/);
+fail(()=>env.definirPermissaoContador({token,usuario:'NAO_EXISTE',permitido:true}),/não encontrado/);
+const granted=env.definirPermissaoContador({token,usuario:'CONTA',permitido:true});
+assert.equal(granted.permitido,true);
+assert.equal(env.listarPermissoesContadores({token}).find(x=>x.usuario==='CONTA').permitido,true);
+assert.equal(env.consultarProduto({token:a,centro:'1025',deposito:'1',codigo:'1000'}).codigo,'1000');
+assert.equal(env.catalogoProdutos({token:a,centro:'1025',deposito:'1'}).itens.length,2);
+env.definirPermissaoContador({token,usuario:'CONTA',permitido:false});
+assert.equal(env.listarPermissoesContadores({token}).find(x=>x.usuario==='CONTA').permitido,false);
+fail(()=>count(a,'1000',10,l1),/Outro contador/);
+assert(env.table_('AUDITORIA').some(x=>x.acao==='PERMISSAO_RECONTAGEM_USUARIO'&&x.referencia==='CONTA'));
 count(b,'1000',10,l1);count(b,'3000',0);
 const duringSecond=env.painel({token,acompanhamento:{centro:'1025',deposito:'1'}}).acompanhamento;
 assert.equal(duringSecond.itens.find(x=>x.codigo==='1000').rodadas[1],'EM_CONTAGEM');
@@ -229,7 +244,7 @@ assert.equal(exp3.itens[0].codigo,'3000');
 assert.equal(env.painel({token}).setores.find(x=>x.deposito==='1').exportacao_terceira,1);
 assert.equal(closedSecond.itens.find(x=>x.codigo==='1000').rodadas[1],'CONFERIDO');
 assert.equal(closedSecond.itens.find(x=>x.codigo==='1000').situacao,'Estoque Batendo');
-assert.equal(closedSecond.itens.find(x=>x.codigo==='3000').rodadas[1],'DIVERGENTE');
+assert.equal(closedSecond.itens.find(x=>x.codigo==='3000').rodadas[1],'SEGUNDA_CONTAGEM');
 assert.equal(closedSecond.itens.find(x=>x.codigo==='3000').situacao,'Aguardando 3ª contagem');
 let third=env.abrirProximaRodada({token,centro:'1025',deposito:'1'});assert.equal(third.alvos,1);
 fail(()=>count(b,'3000',0),/Outro contador/);
@@ -297,7 +312,7 @@ const thirdPass=env.acompanharProdutos_(many,[],[
   {codigo:'7000',centro:'1025',deposito:'1',numero:3,diferenca:0}
 ],[],{centro:'1025',deposito:'1'}).itens[0];
 assert.equal(thirdPass.rodadas[0],'SEGUNDA_CONTAGEM');
-assert.equal(thirdPass.rodadas[1],'DIVERGENTE');
+assert.equal(thirdPass.rodadas[1],'SEGUNDA_CONTAGEM');
 assert.equal(thirdPass.rodadas[2],'CONFERIDO');
 assert.equal(thirdPass.situacao,'Estoque Batendo');
 // É possível repetir o teste e a limpeza antes da ativação oficial.
@@ -330,4 +345,4 @@ fail(()=>env.limparDadosTeste({token,confirmacao:'APAGAR TESTES'}),/proibida/);
 assert.equal(env.table_('CONTAGENS').length,3);
 assert.equal(source.getSheetByName('Data').getLastRow(),5,'fonte SAP não deve mudar durante resets/ativação');
 env.sair({token});fail(()=>env.sessaoAtual({token}),/expirada|inválida/);
-console.log('OK: velocímetro global por SKU sem duplicar lançamentos; exportação cega da segunda/terceira contagem; segurança, bloqueio de rodada reaberta e demais testes de inventário.');
+console.log('OK: permissões individuais auditadas por contador; 1ª/2ª divergências amarelas e 3ª vermelha; contagens e recontagens, exportações, velocímetro e demais testes.');

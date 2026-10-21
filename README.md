@@ -1,5 +1,16 @@
 # Inventário Friovix — GitHub Pages + Google Apps Script
 
+## Atualização de interface e supervisão (v8)
+
+- **Velocímetro:** arco superior segmentado em três faixas coloridas (0–35% vermelho, 35–65% amarelo, 65–100% verde). O preenchimento segue exclusivamente da esquerda para a direita; o ponteiro acompanha a porcentagem de SKUs distintos contados.
+- **Recontagens:** divergências da primeira e segunda contagem aparecem em **amarelo**, como necessidade de recontar. Somente após a **terceira rodada encerrada e divergente** o produto fica vermelho com **Divergência de Estoque**.
+- **Permissões de recontagem:** em Supervisão, busque os contadores pelo nome ou usuário e libere, individualmente, quem pode repetir o mesmo material em rodadas posteriores. A permissão é salva na aba `CONFIG`, conferida pelo backend em todas as consultas/lançamentos e auditada. O antigo interruptor global foi desativado (mesmo que o registro legado ainda exista).
+- **Ações de supervisão:** confirmação centralizada em janela com nome do usuário e centro/depósito/rodada, justificativa obrigatória para reabertura, spinner durante o processamento e atualização automática da tela, contexto e catálogo de produtos, sem depender de F5.
+- **Exportação CSV:** para cada depósito, mostra apenas o botão **Exportar** da próxima recontagem aplicável. Ao chegar à terceira contagem, o arquivo da segunda não aparece; após o fim da terceira rodada, os dois botões desaparecem.
+
+**Atualização do backend já instalado:** substitua somente o conteúdo de `apps-script/Code.gs` e `apps-script/Bridge.html` pela versão do repositório e publique uma **nova versão da implantação**. Não execute `instalarProjeto` e não substitua a planilha. Teste inicialmente no modo TESTE com usuários distintos.
+
+
 Aplicação de inventário físico industrial com endereço **Rua / Zona / Posição / Palete**. O site fica no **GitHub Pages**, mas o banco é uma **nova planilha Google privada**, criada automaticamente pelo Apps Script. A planilha original do SAP é consultada e **não é modificada**.
 
 > **Status: versão inicial para testes homologados. Não usar em inventário oficial sem validação de TI, carga simultânea, reconciliação e procedimentos de contingência.**

@@ -1,7 +1,7 @@
 /* Inventário Friovix — Cliente GitHub Pages. Nenhum segredo é colocado neste arquivo. */
 'use strict';
 const $=id=>document.getElementById(id);
-const state={bridgeWindow:null,bridgeOrigin:'',channel:'',ready:false,pending:new Map(),token:sessionStorage.getItem('inventario_session')||'',usuario:null,context:null,product:null,dashboard:null,requestId:null,tab:'contagem',productPage:1,suggestionSequence:0,suggestionTimer:null,suggestions:[],suggestionActive:-1,catalogCache:new Map(),catalogPending:new Map(),catalogUnsupported:false,catalogSignature:'',dashboardLoading:false,dashboardQueued:'',followupSeq:0,followupTimer:null,sapBusy:false,sapPreview:null};
+const state={bridgeWindow:null,bridgeOrigin:'',channel:'',ready:false,pending:new Map(),token:sessionStorage.getItem('inventario_session')||'',usuario:null,context:null,product:null,dashboard:null,requestId:null,tab:'contagem',productPage:1,suggestionSequence:0,suggestionTimer:null,suggestions:[],suggestionActive:-1,catalogCache:new Map(),catalogPending:new Map(),catalogUnsupported:false,catalogSignature:'',dashboardLoading:false,dashboardQueued:'',followupSeq:0,followupTimer:null,sapBusy:false,sapPreview:null,counterPermissions:[],counterPermissionsLoading:false};
 const safe=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const num=v=>new Intl.NumberFormat('pt-BR',{maximumFractionDigits:3}).format(Number(v)||0);
 const random=()=>typeof crypto!=='undefined'&&crypto.randomUUID?crypto.randomUUID():String(Date.now())+'-'+Math.random().toString(36).slice(2);
@@ -59,7 +59,8 @@ function canSupervise(){return state.usuario&&['ADMIN','SUPERVISOR'].includes(st
 function applyRole(){document.querySelectorAll('.supervisor-only').forEach(n=>n.classList.toggle('hidden-role',!canSupervise()));document.querySelectorAll('.admin-only').forEach(n=>n.classList.toggle('hidden-role',state.usuario.perfil!=='ADMIN'));}
 function switchTab(tab){if((tab==='painel'||tab==='supervisao')&&!canSupervise())return;if(tab==='usuarios'&&state.usuario?.perfil!=='ADMIN')return;state.tab=tab;
   document.querySelectorAll('.tab').forEach(n=>n.classList.toggle('active',n.dataset.tab===tab));document.querySelectorAll('.page').forEach(n=>n.classList.toggle('active',n.id==='tab-'+tab));
-  if((tab==='painel'||tab==='supervisao')&&!state.dashboard)refreshDashboard();}
+  if((tab==='painel'||tab==='supervisao')&&!state.dashboard)refreshDashboard();
+  if(tab==='supervisao')refreshCounterPermissions();}
 async function refreshContext(){
   const next=await api('carregarContexto');
   const signature=JSON.stringify([next.inventario?.id,(next.setores||[]).map(x=>[x.centro,x.deposito,x.rodada_id,x.status])]);
@@ -298,7 +299,7 @@ function suggestionsKeydown(e){
   if(e.key==='Enter'&&state.suggestionActive>=0){e.preventDefault();pickSuggestion(items[state.suggestionActive].codigo);}
 }
 function roundCell(code,index){
-  const classes={CONFERIDO:['passed','Conferido'],SEGUNDA_CONTAGEM:['warning','Recontar'],DIVERGENTE:['failed',index===1?'3ª necessária':'Divergente'],EM_CONTAGEM:['active','Em contagem'],PENDENTE:['pending','Pendente']};
+  const classes={CONFERIDO:['passed','Conferido'],SEGUNDA_CONTAGEM:['warning','Nova contagem'],DIVERGENTE:['failed','Divergência de Estoque'],EM_CONTAGEM:['active','Em contagem'],PENDENTE:['pending','Pendente']};
   const [color,label]=classes[code]||classes.PENDENTE;
   return `<span class="round-state ${color}" title="${safe(label)}"><span class="round-dot ${color}" aria-hidden="true"></span>${safe(label)}</span>`;
 }
@@ -342,29 +343,51 @@ async function saveCount(event){event.preventDefault();const button=$('saveCount
 function fmtDate(x){const d=new Date(x);return Number.isFinite(d.getTime())?d.toLocaleString('pt-BR',{timeZone:'America/Manaus'}):String(x||'');}
 
 /** Velocímetro global — porcentagem de SKUs (código+centro+depósito) com algum lançamento. */
+
+function gaugePoint(pct,radius=95){
+  const angle=Math.PI*(1-pct/100);
+  return {x:120+radius*Math.cos(angle),y:116-radius*Math.sin(angle)};
+}
+function gaugeArc(start,end){
+  if(end<=start)return '';
+  const a=gaugePoint(start),b=gaugePoint(end);
+  return 'M '+a.x.toFixed(2)+' '+a.y.toFixed(2)+' A 95 95 0 0 1 '+b.x.toFixed(2)+' '+b.y.toFixed(2);
+}
 function paintGauge(progresso){
   const data=progresso||{total:0,contados:0,percentual:0};
   const pct=Math.max(0,Math.min(100,Number(data.percentual)||0));
   $('gaugePercent').textContent=pct.toLocaleString('pt-BR',{maximumFractionDigits:1})+'%';
   $('gaugeFraction').textContent=num(data.contados)+' de '+num(data.total)+' produtos contados';
-  const fill=$('gaugeFill');
-  fill.style.strokeDashoffset=String(100-pct);
-  fill.style.stroke=pct>=100?'#18734c':'#df6d3d';
+  // Cada segmento começa onde o anterior termina: não há arredondamento da ponta direita em 0%.
+  for(const zone of [{id:'gaugeZoneLow',start:0,end:35},{id:'gaugeZoneMid',start:35,end:65},{id:'gaugeZoneHigh',start:65,end:100}]){
+    $(''+zone.id).setAttribute('d',gaugeArc(zone.start,Math.min(pct,zone.end)));
+  }
+  const tip=gaugePoint(pct,75);
+  $('gaugeNeedle').setAttribute('x2',tip.x.toFixed(2));
+  $('gaugeNeedle').setAttribute('y2',tip.y.toFixed(2));
 }
+
 function renderRecountExports(){
   const center=$('dashboardCenter').value,depot=$('dashboardDepot').value;
   const sector=state.dashboard?.setores?.find(x=>String(x.centro)===center&&String(x.deposito)===depot);
-  const segunda=Number(sector?.exportacao_segunda)||0,terceira=Number(sector?.exportacao_terceira)||0;
-  const available=segunda>0||terceira>0;
+  // Somente a recontagem da etapa atual/seguinte fica visível (nunca ambas).
+  const rodada=Number(sector?.numero)||0;
+  const n2=Number(sector?.exportacao_segunda)||0,n3=Number(sector?.exportacao_terceira)||0;
+  let n=0,total=0;
+  if(rodada===1&&sector?.status==='ENCERRADA'&&n2>0){n=2;total=n2;}
+  else if(rodada===2&&sector?.status==='ABERTA'&&n2>0){n=2;total=n2;}
+  else if(rodada===2&&sector?.status==='ENCERRADA'&&n3>0){n=3;total=n3;}
+  else if(rodada===3&&sector?.status==='ABERTA'&&n3>0){n=3;total=n3;}
+  const available=n>0;
   $('recountExportPanel').hidden=!available;
-  $('exportRound2').hidden=!(segunda>0);
-  $('exportRound3').hidden=!(terceira>0);
-  $('exportRound2').disabled=!(segunda>0);
-  $('exportRound3').disabled=!(terceira>0);
+  $('exportRound2').hidden=n!==2;
+  $('exportRound3').hidden=n!==3;
+  $('exportRound2').disabled=n!==2;
+  $('exportRound3').disabled=n!==3;
+  $('exportRound2').textContent='Exportar';
+  $('exportRound3').textContent='Exportar';
   if(available){
-    $('exportRound2').textContent='Exportar 2ª contagem ('+num(segunda)+') · CSV';
-    $('exportRound3').textContent='Exportar 3ª contagem ('+num(terceira)+') · CSV';
-    $('recountExportHint').textContent='Centro '+center+' · Depósito '+(depot||'Não informado')+'. Apenas produtos divergentes na rodada anterior encerrada, sem saldo SAP.';
+    $('recountExportHint').textContent='Lista da '+n+'ª contagem · '+num(total)+' produtos divergentes · Centro '+center+' · Depósito '+(depot||'Não informado')+'. Sem saldo SAP.';
   }
 }
 /** Impede que descrições sejam interpretadas como fórmulas por programas de planilha. */
@@ -416,7 +439,7 @@ function paintDashboard(data){state.dashboard=data;const k=data.resumo;
     return `<tr><td>${safe(r.centro)}</td><td>${safe(r.deposito)}</td><td>${safe(r.numero)}</td><td><span class="tag ${r.status==='ABERTA'?'warn':'end'}">${safe(r.status)}</span></td><td>${num(r.produtos_registrados)} / ${num(r.total_alvo)} (${percent}%)</td><td>${num(r.faltando_total)}${r.faltando_total?'<div class="tiny">Ex.: '+safe(r.produtos_faltando.slice(0,3).join(', '))+'</div>':''}</td><td>${action}</td></tr>`;
   }).join(''):'<tr><td colspan="7" class="empty">Nenhum setor disponível.</td></tr>';
   $('approvalsBody').innerHTML=data.divergencias.length?data.divergencias.map(x=>`<tr><td>${safe(x.codigo)}</td><td>${safe(x.centro)}</td><td>${safe(x.deposito)}</td><td>${num(x.quantidade_sap)}</td><td>${num(x.quantidade_contada)}</td><td>${num(x.diferenca)}</td><td><button class="btn secondary action-small" data-approve="${safe(x.resultado_id)}">Aprovar</button></td></tr>`).join(''):'<tr><td colspan="7" class="empty">Nenhuma divergência aguardando aprovação.</td></tr>';
-  $('allowSameCounter').checked=data.config.permitir_recontagem==='SIM';
+
   paintFollowup(data.acompanhamento);
 }
 function getFilter(){return Object.fromEntries([['codigo','filterCode'],['centro','filterCenter'],['deposito','filterDepot'],['rua','filterRua'],['zona','filterZona'],['posicao','filterPosicao'],['palete','filterPalete']].map(([k,id])=>[k,$(id).value.trim()]));}
@@ -481,34 +504,117 @@ async function refreshDashboard(reason){
     if(state.dashboardQueued){const queued=state.dashboardQueued;state.dashboardQueued='';refreshDashboard(queued);}
   }
 }
-async function doClose(roundId){if(!confirm('Encerrar esta rodada? Após o fechamento nenhum contador poderá lançar neste setor até a próxima rodada.'))return;
-  try{const r=await api('encerrarRodada',{rodada_id:roundId},180000);toast(`Rodada ${r.numero} encerrada. ${r.materiais} materiais, ${r.divergentes} divergências.`,'success');await refreshContext();await refreshDashboard();resetProduct();}catch(err){toast(err.message,'error');}}
-async function doReopen(roundId,button){
-  if(!canSupervise())return;
-  const motivo=prompt('Justificativa obrigatória para reabrir a contagem (mínimo de 10 caracteres):');
-  if(motivo===null)return;
-  if(motivo.trim().length<10){toast('Informe uma justificativa com pelo menos 10 caracteres.','error');return;}
-  if(!confirm('Reabrir esta rodada? Os lançamentos existentes serão preservados e os resultados consolidados anteriores ficarão no histórico até um novo encerramento.'))return;
-  btnBusy(button,true,'Reabrindo…');
-  try{
-    const result=await api('reabrirRodada',{rodada_id:roundId,motivo:motivo.trim()},180000);
-    toast(`Rodada ${result.numero} reaberta no Centro ${result.centro}, Depósito ${result.deposito}. Contagens preservadas.`,'success');
-    state.dashboard=null;
-    await refreshContext();await refreshDashboard();resetProduct();
-  }catch(err){toast('Reabertura não concluída: '+err.message,'error');}
-  finally{btnBusy(button,false);}
+
+let pendingRoundAction=null,roundActionBusy=false;
+function closeRoundDialog(){
+  if(roundActionBusy)return;
+  $('roundActionDialog').close();pendingRoundAction=null;
 }
-async function doOpen(value){const [centro,deposito]=value.split('|');if(!confirm(`Abrir próxima rodada para Centro ${centro} / Depósito ${deposito}?`))return;
-  try{const r=await api('abrirProximaRodada',{centro,deposito});toast(`Rodada ${r.numero} aberta para ${r.alvos} materiais divergentes.`,'success');await refreshContext();await refreshDashboard();resetProduct();}catch(err){toast(err.message,'error');}}
+function showRoundDialog(kind,ref){
+  if(!canSupervise()||roundActionBusy)return;
+  const row=kind==='open'
+    ?state.dashboard?.setores?.find(x=>x.centro+'|'+x.deposito===ref)
+    :state.dashboard?.setores?.find(x=>x.rodada_id===ref);
+  if(!row){toast('Atualize a Supervisão e tente novamente.','error');return;}
+  pendingRoundAction={kind,row};
+  const title={close:'Encerrar rodada',open:'Iniciar próxima rodada',reopen:'Reabrir rodada'}[kind];
+  const number=kind==='open'?Number(row.numero)+1:Number(row.numero);
+  const detail=kind==='close'
+    ?'Confirma o encerramento da '+number+'ª contagem? Após confirmar, o sistema consolidará as quantidades e bloqueará novos lançamentos até uma nova rodada ou reabertura.'
+    :kind==='open'
+    ?'Confirma a abertura da '+number+'ª contagem? Somente os materiais divergentes da rodada anterior serão liberados.'
+    :'Confirma a reabertura da '+number+'ª contagem? Os lançamentos existentes serão preservados e os resultados anteriores ficarão no histórico.';
+  $('roundDialogTitle').textContent=title;
+  $('roundDialogText').textContent=detail;
+  $('roundDialogUser').textContent=state.usuario.nome+' ('+state.usuario.usuario+')';
+  $('roundDialogSector').textContent='Centro '+row.centro+' · Depósito '+(row.deposito||'Não informado')+' · '+number+'ª rodada';
+  $('roundDialogReasonWrap').hidden=kind!=='reopen';
+  $('roundDialogReason').value='';
+  $('roundDialogStatus').hidden=true;
+  $('roundDialogConfirm').textContent='Confirmar '+(kind==='close'?'encerramento':kind==='reopen'?'reabertura':'nova rodada');
+  $('roundDialogCancel').disabled=false;
+  $('roundActionDialog').showModal();
+  if(kind==='reopen')$('roundDialogReason').focus();
+  else $('roundDialogConfirm').focus();
+}
+async function confirmRoundAction(){
+  if(!pendingRoundAction||roundActionBusy)return;
+  const {kind,row}=pendingRoundAction;
+  const motivo=$('roundDialogReason').value.trim();
+  if(kind==='reopen'&&motivo.length<10){toast('Informe o motivo da reabertura com pelo menos 10 caracteres.','error');$('roundDialogReason').focus();return;}
+  roundActionBusy=true;
+  const button=$('roundDialogConfirm'),status=$('roundDialogStatus');
+  const labels={close:'Encerrando rodada…',reopen:'Reabrindo rodada…',open:'Abrindo próxima rodada…'};
+  btnBusy(button,true,labels[kind]);$('roundDialogCancel').disabled=true;
+  status.hidden=false;$('roundDialogStatusText').textContent=labels[kind]+' Atualizando a tela ao concluir.';
+  try{
+    let result;
+    if(kind==='close')result=await api('encerrarRodada',{rodada_id:row.rodada_id},180000);
+    else if(kind==='reopen')result=await api('reabrirRodada',{rodada_id:row.rodada_id,motivo},180000);
+    else result=await api('abrirProximaRodada',{centro:row.centro,deposito:row.deposito},180000);
+    // A seleção e os catálogos devem refletir imediatamente a nova rodada, sem F5.
+    state.catalogCache.clear();state.catalogPending.clear();state.catalogSignature='';state.dashboard=null;
+    resetProduct();hideSuggestions();$('productCode').value='';
+    await refreshContext();
+    if($('sectorSelect').value===row.centro+'|'+row.deposito)await preloadCatalog();
+    await refreshDashboard();
+    $('roundActionDialog').close();pendingRoundAction=null;
+    const msg=kind==='close'?('Rodada '+result.numero+' encerrada. '+result.materiais+' materiais e '+result.divergentes+' divergências.')
+      :kind==='open'?('Rodada '+result.numero+' aberta: '+result.alvos+' materiais para recontagem.')
+      :('Rodada '+result.numero+' reaberta. Contagens anteriores preservadas.');
+    toast(msg,'success');
+  }catch(err){toast('Operação não concluída: '+err.message,'error');$('roundDialogStatusText').textContent='Não foi possível concluir. Confira o erro e tente novamente.';}
+  finally{
+    roundActionBusy=false;btnBusy(button,false);$('roundDialogCancel').disabled=false;
+    if(!$('roundActionDialog').open)status.hidden=true;
+  }
+}
+function doClose(roundId){showRoundDialog('close',roundId);}
+function doReopen(roundId){showRoundDialog('reopen',roundId);}
+function doOpen(value){showRoundDialog('open',value);}
 async function doApprove(resultId){const reason=prompt('Justificativa de aprovação da divergência final (mínimo de 8 caracteres):');if(reason===null)return;
   try{await api('aprovarDivergencia',{resultado_id:resultId,motivo:reason});toast('Divergência aprovada. Não foi lançada no SAP.','success');await refreshDashboard();}catch(err){toast(err.message,'error');}}
 async function refreshUsers(){if(state.usuario?.perfil!=='ADMIN')return;try{const users=await api('listarUsuarios');$('userList').innerHTML=users.map(u=>`<div class="person"><div><strong>${safe(u.nome)}</strong><small>${safe(u.usuario)}</small></div><span class="tag ${u.ativo==='SIM'?'ok':'warn'}">${safe(u.perfil)}</span></div>`).join('');}catch(err){toast(err.message,'error');}}
 async function doCreateUser(event){event.preventDefault();const button=$('userForm').querySelector('button');btnBusy(button,true,'Salvando...');try{
   const usuario={usuario:$('newUsername').value.trim(),nome:$('newName').value.trim(),perfil:$('newRole').value,senha:$('newPassword').value};await api('cadastrarUsuario',{usuario});
   $('userForm').reset();toast('Usuário cadastrado.','success');await refreshUsers();
+  state.counterPermissions=[];
 }catch(err){toast(err.message,'error');}finally{btnBusy(button,false);}}
-async function saveSettings(){const value=$('allowSameCounter').checked?'SIM':'NAO';if(!confirm('Alterar a política de contadores entre rodadas?'))return;
-  try{await api('atualizarConfiguracao',{chave:'PERMITIR_MESMO_CONTADOR_ENTRE_RODADAS',valor:value});toast('Configuração salva.','success');await refreshDashboard();}catch(err){toast(err.message,'error');}}
+
+function renderCounterPermissions(){
+  const needle=foldText($('counterPermissionSearch').value.trim());
+  const filtered=state.counterPermissions.filter(x=>!needle||foldText(x.usuario+' '+x.nome).includes(needle));
+  $('counterPermissionList').innerHTML=filtered.length?filtered.map(x=>`<label class="counter-permission-row">
+      <span class="counter-person"><strong>${safe(x.nome)}</strong><small>${safe(x.usuario)}</small></span>
+      <span class="counter-permission-label">Permitir recontagem</span>
+      <input type="checkbox" data-counter-user="${safe(x.usuario)}" ${x.permitido?'checked':''} aria-label="Permitir que ${safe(x.nome)} reconte produtos em rodadas posteriores">
+    </label>`).join(''):'<p class="hint">Nenhum contador encontrado para essa pesquisa.</p>';
+}
+async function refreshCounterPermissions(){
+  if(!canSupervise()||state.counterPermissionsLoading)return;
+  state.counterPermissionsLoading=true;
+  const button=$('refreshCounterPermissions');
+  btnBusy(button,true,'Carregando…');$('counterPermissionStatus').hidden=false;
+  try{
+    state.counterPermissions=await api('listarPermissoesContadores');
+    renderCounterPermissions();
+  }catch(err){toast('Permissões: '+err.message,'error');$('counterPermissionList').innerHTML='<p class="hint">Não foi possível carregar os contadores.</p>';}
+  finally{btnBusy(button,false);$('counterPermissionStatus').hidden=true;state.counterPermissionsLoading=false;}
+}
+async function changeCounterPermission(event){
+  const checkbox=event.target.closest('input[data-counter-user]');
+  if(!checkbox||!canSupervise())return;
+  const usuario=checkbox.dataset.counterUser,permitido=checkbox.checked;
+  checkbox.disabled=true;
+  const row=checkbox.closest('.counter-permission-row');row?.classList.add('permission-saving');
+  try{
+    await api('definirPermissaoContador',{usuario,permitido});
+    const record=state.counterPermissions.find(x=>x.usuario===usuario);
+    if(record)record.permitido=permitido;
+    toast('Permissão de '+usuario+(permitido?' liberada.':' revogada.'),'success');
+  }catch(err){checkbox.checked=!permitido;toast('Permissão: '+err.message,'error');}
+  finally{checkbox.disabled=false;row?.classList.remove('permission-saving');}
+}
 async function logout(){try{await api('sair');}catch{}state.token='';state.usuario=null;state.product=null;state.catalogCache.clear();state.catalogPending.clear();state.catalogSignature='';state.dashboard=null;sessionStorage.removeItem('inventario_session');show('loginPage');$('loginForm').reset();}
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const button=$('loginButton');btnBusy(button,true,'Autenticando...');try{
   const res=await bridgeCall('entrar',{usuario:$('loginUser').value.trim(),senha:$('loginPass').value});state.token=res.token;state.usuario=res.usuario;
@@ -533,7 +639,13 @@ $('productSuggestions').addEventListener('pointerdown',e=>{const b=e.target.clos
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('.product-lookup'))hideSuggestions();});
 $('sectorsBody').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.close)doClose(b.dataset.close);if(b.dataset.open)doOpen(b.dataset.open);if(b.dataset.reopen)doReopen(b.dataset.reopen,b);});
 $('approvalsBody').addEventListener('click',e=>{const b=e.target.closest('button');if(b?.dataset.approve)doApprove(b.dataset.approve);});
-$('userForm').addEventListener('submit',doCreateUser);$('saveSettings').addEventListener('click',saveSettings);
+$('userForm').addEventListener('submit',doCreateUser);
+$('refreshCounterPermissions').addEventListener('click',refreshCounterPermissions);
+$('counterPermissionSearch').addEventListener('input',renderCounterPermissions);
+$('counterPermissionList').addEventListener('change',changeCounterPermission);
+$('roundDialogCancel').addEventListener('click',closeRoundDialog);
+$('roundDialogConfirm').addEventListener('click',confirmRoundAction);
+$('roundActionDialog').addEventListener('cancel',event=>{if(roundActionBusy)event.preventDefault();else pendingRoundAction=null;});
 $('testModeButton').addEventListener('click',()=>toast('O modo TESTE já está ativo.','success'));
 $('officialModeButton').addEventListener('click',startOfficialInventory);
 $('clearTestDataButton').addEventListener('click',clearTestData);
