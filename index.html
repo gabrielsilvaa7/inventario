@@ -78,6 +78,20 @@
         <div class="heading inline"><div><div class="eyebrow">INDICADORES</div><h2>Dashboard de inventário</h2><p>Contagens e localização de materiais por endereço físico.</p></div><div class="dashboard-actions"><span id="dashboardUpdatedAt" class="tiny" aria-live="polite">Aguardando primeira atualização</span><button class="btn secondary" id="refreshDashboard" type="button">Atualizar</button></div></div>
         <div id="dashboardStatus" class="operation-status" role="status" aria-live="polite" hidden><span class="mini-spinner" aria-hidden="true"></span><span id="dashboardStatusText">Atualizando informações do inventário…</span></div>
         <div class="stats" id="stats"></div>
+        <article class="panel gauge-panel" aria-label="Evolução global da contagem por produto">
+          <div class="gauge-intro">
+            <div class="eyebrow">EVOLUÇÃO GERAL DO INVENTÁRIO</div>
+            <h3>Produtos contados da base SAP</h3>
+            <p>Cada Código + Centro + Depósito conta como um produto. Uma contagem de quantidade zero também conta como registrada; não é preciso encerrar a rodada para avançar.</p>
+          </div>
+          <div class="gauge-visual" aria-live="polite">
+            <svg viewBox="0 0 240 138" class="gauge-svg" aria-hidden="true">
+              <path d="M 25 116 A 95 95 0 0 1 215 116" class="gauge-track" fill="none" stroke-width="20" stroke-linecap="round"></path>
+              <path id="gaugeFill" d="M 25 116 A 95 95 0 0 1 215 116" class="gauge-fill" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100" fill="none" stroke-width="20" stroke-linecap="round"></path>
+            </svg>
+            <div class="gauge-number"><strong id="gaugePercent">0%</strong><span id="gaugeFraction">0 de 0 produtos contados</span></div>
+          </div>
+        </article>
         <article class="panel progress-panel">
           <div class="panel-head"><div><h3>Acompanhamento de produtos</h3><p>Resultado consolidado após o encerramento de cada rodada, com progresso por centro e depósito.</p></div></div>
           <div class="followup-filters">
@@ -85,6 +99,13 @@
             <label>Depósito<select id="dashboardDepot"><option value="">Carregando...</option></select></label>
             <label>Localizar produto<input type="search" id="dashboardQuery" placeholder="Código ou descrição" autocomplete="off"></label>
             <button class="btn secondary" type="button" id="searchFollowup">Filtrar produtos</button>
+          </div>
+          <div id="recountExportPanel" class="recount-export-panel" hidden>
+            <div class="recount-export-copy"><strong>Listas de recontagem</strong><span id="recountExportHint">Disponíveis depois que a rodada anterior for encerrada com divergências. As listas não incluem o saldo SAP.</span></div>
+            <div class="recount-export-buttons">
+              <button type="button" class="btn secondary" id="exportRound2" hidden disabled>Exportar para 2ª contagem</button>
+              <button type="button" class="btn secondary" id="exportRound3" hidden disabled>Exportar para 3ª contagem</button>
+            </div>
           </div>
           <div id="followupLoading" class="operation-status secondary-status" role="status" aria-live="polite" hidden><span class="mini-spinner" aria-hidden="true"></span><span>Consultando produtos e rodadas…</span></div>
           <div class="progress-overview" id="progressOverview" aria-live="polite"></div>
