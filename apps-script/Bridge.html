@@ -12,7 +12,8 @@ const METHODS = new Set([
   'catalogoProdutos','filtrarAcompanhamento',
   'salvarContagem','painel','encerrarRodada','reabrirRodada','abrirProximaRodada',
   'aprovarDivergencia','listarUsuarios','cadastrarUsuario','atualizarConfiguracao',
-  'estadoAmbiente','limparDadosTeste','iniciarInventarioOficial'
+  'estadoAmbiente','limparDadosTeste','iniciarInventarioOficial',
+  'previsualizarAtualizacaoSAP','atualizarBaseSAP'
 ]);
 function reply(payload){window.top.postMessage({app:'inventario-sap',channel:CHANNEL,...payload},ALLOWED_ORIGIN);}
 window.addEventListener('message',event=>{
