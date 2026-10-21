@@ -21,3 +21,45 @@
 .test-cleanup>div{max-width:650px}
 .btn.danger{background:#b43f32;color:#fff;flex-shrink:0}
 @media(max-width:600px){.mode-choice{grid-template-columns:1fr}.test-cleanup{flex-direction:column;align-items:stretch}.environment-metrics{grid-template-columns:repeat(2,1fr)}.header-actions{gap:6px}.header-actions .mode-badge{padding:4px 6px;font-size:.65rem}}
+
+/* Inventário Friovix — acompanhamento de rodadas por produto e busca inteligente */
+.product-lookup{position:relative}
+.product-lookup .input-action{width:100%}
+.suggestions{position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;z-index:30;max-height:310px;overflow-y:auto;border:1px solid #bfcde0;border-radius:11px;box-shadow:0 15px 40px #17294330}
+.suggestion{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:start;gap:11px;text-align:left;border:0;border-bottom:1px solid #edf1f6;padding:12px 14px;width:100%;background:#fff;color:var(--ink);font-size:.85rem}
+.suggestion:last-child{border-bottom:0}
+.suggestion strong{color:#1a4a75;min-width:72px}
+.suggestion span{white-space:normal;line-height:1.35}
+.suggestion small{color:var(--muted)}
+.suggestion:hover,.suggestion[aria-selected="true"]{background:#eff6fd}
+.suggestion-empty{padding:15px;color:var(--muted);font-size:.85rem}
+.followup-filters{display:grid;grid-template-columns:minmax(110px,1fr) minmax(110px,1fr) minmax(180px,2fr) auto;align-items:end;gap:12px;margin:18px 0}
+.followup-filters label{display:grid;gap:8px;font-size:.85rem;font-weight:720}
+.followup-filters input,.followup-filters select{padding:11px;border:1px solid #cad5e3;border-radius:9px;background:white;color:var(--ink);min-width:0;width:100%}
+.progress-overview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:18px 0}
+.progress-tile{border:1px solid #e2e9f2;background:#f8fafd;border-radius:11px;padding:17px;min-width:0}
+.progress-tile>span{display:block;font-size:.79rem;font-weight:650;color:var(--muted);margin-bottom:8px}
+.progress-tile>strong{display:block;font-size:1.55rem;line-height:1.1;color:var(--navy)}
+.progress-tile strong small,.progress-tile>small{font-size:.76rem;color:var(--muted);font-weight:500}
+.progress-track{height:9px;background:#dfe7f0;border-radius:10px;margin-top:12px;overflow:hidden}
+.progress-fill{height:100%;border-radius:10px;transition:width .2s}
+.progress-fill.started{background:#4686bd}.progress-fill.completed{background:#219363}
+.round-legend{display:flex;gap:15px;flex-wrap:wrap;margin:18px 0 13px;font-size:.79rem;color:var(--muted)}
+.round-legend>span{display:inline-flex;align-items:center;gap:7px}
+.round-dot{display:inline-block;width:10px;height:10px;flex:none;border-radius:50%;background:#9aabbc;border:1px solid #ffffffaa}
+.round-dot.passed{background:#19965e}.round-dot.warning{background:#e7ae2a}.round-dot.failed{background:#d9534f}.round-dot.active{background:#3c8bc9}.round-dot.pending{background:#a6b3c0}
+.round-state{display:inline-flex;align-items:center;gap:7px;padding:6px 9px;white-space:nowrap;border-radius:8px;font-size:.78rem;font-weight:650;background:#f1f4f8;color:#6a778a}
+.round-state.passed{background:#e5f6ed;color:#136a42}.round-state.warning{background:#fff5dc;color:#92600a}.round-state.failed{background:#fdebeb;color:#a72f2b}.round-state.active{background:#eaf3fc;color:#2367a4}
+.followup-table{min-width:850px}
+.followup-table td{vertical-align:middle}
+.followup-table .product-description{max-width:320px;min-width:180px;white-space:normal;line-height:1.4}
+.final-status{display:inline-block;font-size:.78rem;font-weight:780;padding:6px 10px;border-radius:9px;white-space:nowrap}
+.final-status.passed{background:#e4f5eb;color:#176b45}
+.final-status.failed{background:#feecec;color:#a52d28}
+.final-status.warning{background:#fff3dd;color:#92600a}
+.final-status.active{background:#e8f2fb;color:#2367a4}
+.final-status.pending{background:#eef1f5;color:#637287}
+.followup-pagination{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-top:16px}
+.followup-pagination>div{display:flex;align-items:center;gap:12px}
+@media(max-width:900px){.progress-overview{grid-template-columns:repeat(2,minmax(0,1fr))}.followup-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.progress-overview{gap:9px}.progress-tile{padding:12px}.progress-tile>strong{font-size:1.3rem}.followup-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.followup-filters label:nth-child(3){grid-column:span 2}.followup-filters button{grid-column:span 2}.followup-pagination{align-items:start}}
