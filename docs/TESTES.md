@@ -56,3 +56,14 @@ Use um banco de teste separado; não edite o arquivo SAP original.
 9. Simule diferentes usuários/abas para verificar que contagens iniciadas antes da limpeza não deixam linhas órfãs. Em caso de queda durante a limpeza, execute novamente como ADMIN.
 
 **Atenção:** editar `Code.gs` no repositório não atualiza a implantação `/exec` automaticamente. É obrigatório atualizar os arquivos do projeto Apps Script e criar uma **nova versão da implantação existente** antes de testar os novos controles.
+
+## Reabertura supervisionada (v5)
+
+1. Feche uma rodada de teste; confira o botão **Reabrir** na aba Supervisão.
+2. Tente reabrir como contador: deve negar. Como supervisor, informe justificativa com 10 ou mais caracteres e confirme.
+3. Confira que os lançamentos permanecem em `CONTAGENS`, os resultados anteriores passam ao status `REABERTO` e há evento `RODADA_REABERTA` na `AUDITORIA`.
+4. Lance quantidade adicional, encerre de novo e valide a nova soma, inclusive dashboard e produto conferido/divergente.
+5. Tente reabrir rodada anterior após iniciar a seguinte: deve negar. Tente reabrir com divergência aprovada: deve negar.
+6. Simule interrupção em `REABRINDO` e confira **Retomar reabertura**. Valide no modo TESTE e OFICIAL.
+
+Os testes automatizados estão em `tests/backend.smoke.test.js`. Não altere dados de produção para executar esses cenários.

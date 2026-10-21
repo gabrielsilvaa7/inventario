@@ -79,3 +79,9 @@
 
 .dashboard-actions{display:flex;align-items:center;gap:12px;justify-content:flex-end;flex-wrap:wrap}
 @media(max-width:650px){.dashboard-actions{justify-content:flex-start}.dashboard-actions .tiny{order:2;width:100%}}
+
+/* Reabertura supervisionada de rodada encerrada */
+.round-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:175px}
+.btn.outline-reopen{background:#fff;border:1px solid #52749b;color:#244b73;font-weight:750}
+.btn.outline-reopen:hover:not(:disabled){background:#eaf2fc}
+@media(max-width:600px){.round-actions{flex-direction:column;align-items:stretch;min-width:130px}}

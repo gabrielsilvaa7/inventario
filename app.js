@@ -290,7 +290,12 @@ function paintDashboard(data){state.dashboard=data;const k=data.resumo;
   $('locationsBody').innerHTML=data.enderecos.length?data.enderecos.map(x=>`<tr><td><strong>${safe(x.codigo)}</strong></td><td>${safe(x.descricao)}</td><td>${safe(x.centro)}</td><td>${safe(x.deposito)}</td><td>${safe(x.rua)}</td><td>${safe(x.zona)}</td><td>${safe(x.posicao)}</td><td>${safe(x.palete)}</td><td>${num(x.quantidade)}</td><td>${safe(x.rodada)}</td></tr>`).join(''):'<tr><td colspan="10" class="empty">Nenhum material encontrado nos filtros escolhidos.</td></tr>';
   $('sectorsBody').innerHTML=data.setores.length?data.setores.map(r=>{
     const percent=r.total_alvo?Math.round(100*r.produtos_registrados/r.total_alvo):100;
-    const action=r.status==='ABERTA'?`<button class="btn secondary action-small" data-close="${safe(r.rodada_id)}">Encerrar</button>`:r.numero<3?`<button class="btn secondary action-small" data-open="${safe(r.centro)}|${safe(r.deposito)}">Próxima rodada</button>`:'—';
+    const action=r.status==='ABERTA'
+      ?`<button class="btn secondary action-small" data-close="${safe(r.rodada_id)}">Encerrar</button>`
+      :r.status==='REABRINDO'
+      ?`<button class="btn secondary action-small" data-reopen="${safe(r.rodada_id)}">Retomar reabertura</button>`
+      :r.status==='ENCERRADA'
+      ?`<div class="round-actions">${r.numero<3?`<button class="btn secondary action-small" data-open="${safe(r.centro)}|${safe(r.deposito)}">Próxima rodada</button>`:''}${r.pode_reabrir?`<button class="btn outline-reopen action-small" data-reopen="${safe(r.rodada_id)}" title="Reabrir para completar a contagem, mantendo histórico">Reabrir</button>`:''}${r.numero===3&&!r.pode_reabrir?'<span class="tiny">Aprovação registrada</span>':''}</div>`:'—';
     return `<tr><td>${safe(r.centro)}</td><td>${safe(r.deposito)}</td><td>${safe(r.numero)}</td><td><span class="tag ${r.status==='ABERTA'?'warn':'end'}">${safe(r.status)}</span></td><td>${num(r.produtos_registrados)} / ${num(r.total_alvo)} (${percent}%)</td><td>${num(r.faltando_total)}${r.faltando_total?'<div class="tiny">Ex.: '+safe(r.produtos_faltando.slice(0,3).join(', '))+'</div>':''}</td><td>${action}</td></tr>`;
   }).join(''):'<tr><td colspan="7" class="empty">Nenhum setor disponível.</td></tr>';
   $('approvalsBody').innerHTML=data.divergencias.length?data.divergencias.map(x=>`<tr><td>${safe(x.codigo)}</td><td>${safe(x.centro)}</td><td>${safe(x.deposito)}</td><td>${num(x.quantidade_sap)}</td><td>${num(x.quantidade_contada)}</td><td>${num(x.diferenca)}</td><td><button class="btn secondary action-small" data-approve="${safe(x.resultado_id)}">Aprovar</button></td></tr>`).join(''):'<tr><td colspan="7" class="empty">Nenhuma divergência aguardando aprovação.</td></tr>';
@@ -361,6 +366,21 @@ async function refreshDashboard(reason){
 }
 async function doClose(roundId){if(!confirm('Encerrar esta rodada? Após o fechamento nenhum contador poderá lançar neste setor até a próxima rodada.'))return;
   try{const r=await api('encerrarRodada',{rodada_id:roundId},180000);toast(`Rodada ${r.numero} encerrada. ${r.materiais} materiais, ${r.divergentes} divergências.`,'success');await refreshContext();await refreshDashboard();resetProduct();}catch(err){toast(err.message,'error');}}
+async function doReopen(roundId,button){
+  if(!canSupervise())return;
+  const motivo=prompt('Justificativa obrigatória para reabrir a contagem (mínimo de 10 caracteres):');
+  if(motivo===null)return;
+  if(motivo.trim().length<10){toast('Informe uma justificativa com pelo menos 10 caracteres.','error');return;}
+  if(!confirm('Reabrir esta rodada? Os lançamentos existentes serão preservados e os resultados consolidados anteriores ficarão no histórico até um novo encerramento.'))return;
+  btnBusy(button,true,'Reabrindo…');
+  try{
+    const result=await api('reabrirRodada',{rodada_id:roundId,motivo:motivo.trim()},180000);
+    toast(`Rodada ${result.numero} reaberta no Centro ${result.centro}, Depósito ${result.deposito}. Contagens preservadas.`,'success');
+    state.dashboard=null;
+    await refreshContext();await refreshDashboard();resetProduct();
+  }catch(err){toast('Reabertura não concluída: '+err.message,'error');}
+  finally{btnBusy(button,false);}
+}
 async function doOpen(value){const [centro,deposito]=value.split('|');if(!confirm(`Abrir próxima rodada para Centro ${centro} / Depósito ${deposito}?`))return;
   try{const r=await api('abrirProximaRodada',{centro,deposito});toast(`Rodada ${r.numero} aberta para ${r.alvos} materiais divergentes.`,'success');await refreshContext();await refreshDashboard();resetProduct();}catch(err){toast(err.message,'error');}}
 async function doApprove(resultId){const reason=prompt('Justificativa de aprovação da divergência final (mínimo de 8 caracteres):');if(reason===null)return;
@@ -394,7 +414,7 @@ $('productCode').addEventListener('keydown',suggestionsKeydown);
 $('productCode').addEventListener('focus',()=>{if($('productCode').value.trim().length>=2)queueSuggestions();});
 $('productSuggestions').addEventListener('pointerdown',e=>{const b=e.target.closest('[data-suggest-code]');if(!b)return;e.preventDefault();pickSuggestion(b.dataset.suggestCode);});
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('.product-lookup'))hideSuggestions();});
-$('sectorsBody').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.close)doClose(b.dataset.close);if(b.dataset.open)doOpen(b.dataset.open);});
+$('sectorsBody').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.close)doClose(b.dataset.close);if(b.dataset.open)doOpen(b.dataset.open);if(b.dataset.reopen)doReopen(b.dataset.reopen,b);});
 $('approvalsBody').addEventListener('click',e=>{const b=e.target.closest('button');if(b?.dataset.approve)doApprove(b.dataset.approve);});
 $('userForm').addEventListener('submit',doCreateUser);$('saveSettings').addEventListener('click',saveSettings);
 $('testModeButton').addEventListener('click',()=>toast('O modo TESTE já está ativo.','success'));

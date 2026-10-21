@@ -4,6 +4,18 @@ Aplicação de inventário físico industrial com endereço **Rua / Zona / Posi�
 
 > **Status: versão inicial para testes homologados. Não usar em inventário oficial sem validação de TI, carga simultânea, reconciliação e procedimentos de contingência.**
 
+## Reabertura de rodadas encerradas (v5)
+
+Na aba **Supervisão**, o supervisor ou administrador pode clicar em **Reabrir** na última rodada encerrada de um centro/depósito. É obrigatório informar uma justificativa de 10 ou mais caracteres.
+
+- Os lançamentos da rodada, incluindo endereço, quantidade e usuário, permanecem na aba `CONTAGENS`.
+- Os resultados do fechamento anterior são mantidos na aba `RESULTADOS` com status `REABERTO`, como histórico, e deixam de participar dos cálculos/dashboards.
+- Ao encerrar novamente, o sistema gera nova consolidação e novos identificadores de resultados; a reabertura é registrada em `AUDITORIA`.
+- Se uma rodada posterior já foi iniciada ou se houve aprovação de divergência, **não é possível reabrir**.
+- Se a operação interromper com status `REABRINDO`, clique em **Retomar reabertura**. Essa proteção também é válida no modo OFICIAL.
+
+**Para ativar no Apps Script existente:** substitua `Code.gs` e `Bridge.html` e selecione **Implantar → Gerenciar implantações → Editar → Nova versão → Implantar**. Não execute `instalarProjeto` novamente. A planilha de dados não precisa ser recriada.
+
 ## O que já funciona
 
 - Login com usuário/senha; perfis `CONTADOR`, `SUPERVISOR` e `ADMIN`.

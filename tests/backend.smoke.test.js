@@ -106,6 +106,30 @@ fail(()=>env.encerrarRodada({token,rodada_id:env.carregarContexto({token}).setor
 count(a,'3000',0);
 const firstRound=env.carregarContexto({token}).setores.find(x=>x.deposito==='1').rodada_id;
 const firstClose=env.encerrarRodada({token,rodada_id:firstRound});assert.equal(firstClose.divergentes,2);
+// Reabertura de fechamento acidental: lançamentos e resultado histórico permanecem.
+fail(()=>env.reabrirRodada({token:a,rodada_id:firstRound,motivo:'Fechado antes do inventário terminar'}),/supervisor/);
+fail(()=>env.reabrirRodada({token,rodada_id:firstRound,motivo:'curto'}),/justificativa/);
+fail(()=>env.reabrirRodada({token,rodada_id:'id-nao-existe',motivo:'Fechamento incorreto da rodada'}),/não encontrada/);
+assert.equal(env.painel({token}).setores.find(x=>x.deposito==='1').pode_reabrir,true);
+const originallyClosed=env.resultadosAtivos_().filter(x=>x.rodada_id===firstRound);
+assert.equal(originallyClosed.length,3);
+const launchCountBeforeReopen=env.table_('CONTAGENS').length;
+const reopenedFirst=env.reabrirRodada({token,rodada_id:firstRound,motivo:'Encerrado antes do término da verificação física'});
+assert.equal(reopenedFirst.lancamentos_preservados,true);
+assert.equal(env.carregarContexto({token}).setores.find(x=>x.deposito==='1').status,'ABERTA');
+assert.equal(env.resultadosAtivos_().filter(x=>x.rodada_id===firstRound).length,0,'resultado fechado deve sair dos indicadores');
+assert.equal(env.table_('RESULTADOS').filter(x=>x.rodada_id===firstRound&&x.status==='REABERTO').length,3,'histórico não pode ser apagado');
+assert.equal(env.table_('CONTAGENS').length,launchCountBeforeReopen);
+assert.equal(env.painel({token,acompanhamento:{centro:'1025',deposito:'1'}}).acompanhamento.concluidos,0,'dashboard não pode exibir resultado anulado como conferido');
+fail(()=>env.reabrirRodada({token,rodada_id:firstRound,motivo:'Fechamento incorreto da rodada'}),/deve estar encerrada/);
+// O operador pode lançar novamente, preservando quantidade total.
+count(a,'1000',0);
+assert.equal(env.encerrarRodada({token,rodada_id:firstRound}).divergentes,2);
+const currentResultIds=env.resultadosAtivos_().filter(x=>x.rodada_id===firstRound).map(x=>x.resultado_id);
+assert.equal(currentResultIds.length,3);
+assert(currentResultIds.every(id=>!originallyClosed.some(x=>x.resultado_id===id)),'novo fechamento deve gerar novos resultados');
+assert(env.table_('AUDITORIA').some(x=>x.acao==='RODADA_REABERTA'&&String(x.detalhes).includes('Encerrado antes')));
+
 const closedFirst=env.painel({token,acompanhamento:{centro:'1025',deposito:'1'}}).acompanhamento;
 assert.equal(closedFirst.contados,3);
 assert.equal(closedFirst.concluidos,1);
@@ -118,6 +142,7 @@ assert.equal(env.catalogoProdutos({token:a,centro:'1025',deposito:'1'}).itens.le
 assert.equal(env.sugerirProdutos({token:a,centro:'1025',deposito:'1',termo:'2000'}).itens.length,0);
 fail(()=>count(a,'1000',2,l1),/encerrada/);
 let second=env.abrirProximaRodada({token,centro:'1025',deposito:'1'});assert.equal(second.alvos,2);
+fail(()=>env.reabrirRodada({token,rodada_id:firstRound,motivo:'Há mais produtos a registrar na primeira'}),/posterior/);
 fail(()=>env.consultarProduto({token:b,centro:'1025',deposito:'1',codigo:'2000'}),/já foi conferido/);
 fail(()=>count(a,'1000',10,l1),/Outro contador/);
 count(b,'1000',10,l1);count(b,'3000',0);
@@ -129,6 +154,22 @@ assert.equal(env.catalogoProdutos({token:b,centro:'1025',deposito:'1'}).itens.le
 
 assert.equal(env.sugerirProdutos({token:b,centro:'1025',deposito:'1',termo:'1000'}).itens.length,1);
 assert.equal(env.encerrarRodada({token,rodada_id:second.rodada_id}).divergentes,1);
+// Retomada de execução parcialmente interrompida: alguns resultados já foram invalidados.
+const testDb=sheets.get(props.get('DB_SPREADSHEET_ID'));
+const roundsTable=testDb.getSheetByName('RODADAS');
+const resultsTable=testDb.getSheetByName('RESULTADOS');
+const roundTwoRow=roundsTable.rows.findIndex(x=>x[0]===second.rodada_id);
+const secondResultRow=resultsTable.rows.findIndex(x=>x[2]===second.rodada_id);
+assert(roundTwoRow>0 && secondResultRow>0);
+roundsTable.rows[roundTwoRow][5]='REABRINDO';
+resultsTable.rows[secondResultRow][10]='REABERTO';
+assert.equal(env.painel({token}).setores.find(x=>x.deposito==='1').status,'REABRINDO');
+const recoveredReopen=env.reabrirRodada({token,rodada_id:second.rodada_id,motivo:'Retomando reabertura interrompida pelo servidor'});
+assert.equal(recoveredReopen.numero,2);
+assert.equal(env.carregarContexto({token}).setores.find(x=>x.deposito==='1').status,'ABERTA');
+assert.equal(env.resultadosAtivos_().filter(x=>x.rodada_id===second.rodada_id).length,0);
+assert.equal(env.encerrarRodada({token,rodada_id:second.rodada_id}).divergentes,1);
+
 const closedSecond=env.painel({token,acompanhamento:{centro:'1025',deposito:'1'}}).acompanhamento;
 assert.equal(closedSecond.itens.find(x=>x.codigo==='1000').rodadas[1],'CONFERIDO');
 assert.equal(closedSecond.itens.find(x=>x.codigo==='1000').situacao,'Estoque Batendo');
@@ -152,7 +193,9 @@ let panel=env.painel({token});assert.equal(panel.resumo.conferidos,2);assert.equ
 const final=panel.divergencias[0];assert.equal(final.codigo,'3000');
 fail(()=>env.aprovarDivergencia({token,resultado_id:final.resultado_id,motivo:'breve'}),/oito/);
 env.aprovarDivergencia({token,resultado_id:final.resultado_id,motivo:'Conferido fisicamente com a equipe de armazém'});
+fail(()=>env.reabrirRodada({token,rodada_id:third.rodada_id,motivo:'Tentativa após aprovação de divergência'}),/aprovação/);
 panel=env.painel({token});assert.equal(panel.resumo.pendentes_aprovacao,0);
+assert.equal(panel.setores.find(x=>x.deposito==='1').pode_reabrir,false);
 assert.equal(panel.resumo.aprovados,1);
 const address=panel.enderecos.filter(x=>x.codigo==='1000'&&x.deposito==='1');
 assert.equal(address.length,1);assert.equal(address[0].quantidade,10);
@@ -211,8 +254,18 @@ fail(()=>env.limparDadosTeste({token,confirmacao:'APAGAR TESTES'}),/proibida/);
 fail(()=>env.iniciarInventarioOficial({token,confirmacao:'INICIAR INVENTARIO OFICIAL'}),/OFICIAL/);
 assert.equal(env.table_('RODADAS').length,2);
 count(a,'1000',3,l2);assert.equal(env.painel({token}).resumo.total_lancamentos,1);
+// No modo oficial: reabrir NÃO equivale a limpeza e continua possível com auditoria.
+count(a,'2000','1,250',l1);
+count(a,'3000',0);
+const officialRound=env.carregarContexto({token}).setores.find(x=>x.deposito==='1').rodada_id;
+assert.equal(env.encerrarRodada({token,rodada_id:officialRound}).numero,1);
+assert.equal(env.reabrirRodada({token,rodada_id:officialRound,motivo:'Necessário completar conferência no modo oficial'}).numero,1);
+assert.equal(props.get('INVENTARIO_MODO'),'OFICIAL');
+assert.equal(env.table_('RESULTADOS').filter(x=>x.rodada_id===officialRound).every(x=>x.status==='REABERTO'),true);
+assert.equal(env.table_('CONTAGENS').filter(x=>x.rodada_id===officialRound).length,3);
+
 fail(()=>env.limparDadosTeste({token,confirmacao:'APAGAR TESTES'}),/proibida/);
-assert.equal(env.table_('CONTAGENS').length,1);
+assert.equal(env.table_('CONTAGENS').length,3);
 assert.equal(source.getSheetByName('Data').getLastRow(),5,'fonte SAP não deve mudar durante resets/ativação');
 env.sair({token});fail(()=>env.sessaoAtual({token}),/expirada|inválida/);
-console.log('OK: Inventário Friovix; pesquisa por código/descrição; dashboard progressivo das 3 rodadas, fechamento, percentuais, centros/depósitos, ocultação de auditoria; inventário TESTE/OFICIAL e demais regras.');
+console.log('OK: reabertura supervisionada, preservação/auditoria, bloqueios de rodada posterior e aprovação, recuperação e modo oficial; pesquisa por código/descrição; dashboard progressivo das 3 rodadas, fechamento, percentuais, centros/depósitos, ocultação de auditoria; inventário TESTE/OFICIAL e demais regras.');

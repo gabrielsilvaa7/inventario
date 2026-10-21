@@ -48,6 +48,8 @@ function withLock_(fn){const lock=LockService.getScriptLock();lock.waitLock(3000
 function auth_(token){const hash=sha_(str_(token));if(!token||str_(token).length<40)throw Error('Sessão ausente: faça login.');const s=table_('SESSOES').find(x=>x.token_hash===hash&&!x.revogada&&toMillis_(x.expira_em)>Date.now());if(!s)throw Error('Sessão expirada ou inválida. Faça login novamente.');const u=table_('USUARIOS').find(x=>x.usuario===s.usuario&&x.ativo==='SIM');if(!u)throw Error('Usuário desativado.');return {usuario:u.usuario,nome:u.nome,perfil:u.perfil};}
 function activeInventory_(){const list=table_('INVENTARIOS').filter(x=>x.status==='ATIVO');if(!list.length)throw Error('Não há inventário ativo.');return list[list.length-1];}
 function sector_(inv,center,depot){return table_('RODADAS').filter(x=>x.inventario_id===inv&&str_(x.centro)===str_(center)&&str_(x.deposito)===str_(depot)).sort((a,b)=>Number(a.numero)-Number(b.numero));}
+/** Resultados de fechamentos revogados são mantidos para auditoria, mas não para cálculo. */
+function resultadosAtivos_(){return table_('RESULTADOS').filter(x=>str_(x.status)!=='REABERTO');}
 function targetForRound_(round,base,results){if(Number(round.numero)===1)return base;const prev=results.filter(x=>x.rodada_id!==round.rodada_id&&x.inventario_id===round.inventario_id&&str_(x.centro)===str_(round.centro)&&str_(x.deposito)===str_(round.deposito)&&Number(x.numero)===Number(round.numero)-1&&Math.abs(Number(x.diferenca))>0.0000001);const ids=new Set(prev.map(x=>str_(x.codigo)));return base.filter(x=>ids.has(str_(x.codigo)));}
 function inventoryBase_(inv,center,depot){return table_('BASE_ESTOQUE').filter(x=>x.inventario_id===inv&&(center===undefined||center===null||str_(x.centro)===str_(center))&&(depot===undefined||depot===null||str_(x.deposito)===str_(depot)));}
 function latestResultsMap_(results){const m=new Map();for(const r of results){const k=normalizeKey_(r.codigo,r.centro,r.deposito),prev=m.get(k);if(!prev||Number(r.numero)>Number(prev.numero))m.set(k,r);}return m;}
@@ -191,7 +193,7 @@ function carregarContexto(d){exigirSemLimpeza_();const u=auth_(d.token),inv=acti
 function consultarProduto(d){exigirSemLimpeza_();const u=auth_(d.token),inv=activeInventory_(),center=str_(d.centro),depot=str_(d.deposito),code=str_(d.codigo);
   const rounds=sector_(inv.inventario_id,center,depot),r=rounds[rounds.length-1];if(!r||r.status!=='ABERTA')throw Error('Não há rodada aberta para o centro/depósito escolhido.');
   const p=inventoryBase_(inv.inventario_id,center,depot).find(x=>str_(x.codigo)===code);if(!p)throw Error('Código não encontrado na base SAP deste centro e depósito.');
-  const targets=targetForRound_(r,inventoryBase_(inv.inventario_id,center,depot),table_('RESULTADOS'));
+  const targets=targetForRound_(r,inventoryBase_(inv.inventario_id,center,depot),resultadosAtivos_());
   if(!targets.some(x=>str_(x.codigo)===code))throw Error('Este material já foi conferido ou não pertence à rodada atual.');
   if(getConfig_('PERMITIR_MESMO_CONTADOR_ENTRE_RODADAS')!=='SIM'&&Number(r.numero)>1){
     const olderIds=new Set(rounds.filter(x=>Number(x.numero)<Number(r.numero)).map(x=>x.rodada_id));
@@ -214,7 +216,7 @@ function catalogoProdutos(d){
   const rows=last>1?sheet.getRange(2,1,last-1,7).getValues():[];
   const base=rows.filter(row=>str_(row[0])===str_(inv.inventario_id)&&str_(row[5])===centro&&str_(row[6])===deposito)
     .map(row=>({codigo:str_(row[2]),descricao:str_(row[3]),um:str_(row[4]),centro:str_(row[5]),deposito:str_(row[6])}));
-  const alvos=Number(rodada.numero)===1?base:targetForRound_(rodada,base,table_('RESULTADOS'));
+  const alvos=Number(rodada.numero)===1?base:targetForRound_(rodada,base,resultadosAtivos_());
   let jaContados=new Set();
   if(Number(rodada.numero)>1&&getConfig_('PERMITIR_MESMO_CONTADOR_ENTRE_RODADAS')!=='SIM'){
     const anteriores=new Set(rodadas.filter(r=>Number(r.numero)<Number(rodada.numero)).map(r=>str_(r.rodada_id)));
@@ -236,7 +238,7 @@ function filtrarAcompanhamento(d){
     .map(row=>({chave:str_(row[1]),codigo:str_(row[2]),descricao:str_(row[3]),centro:str_(row[5]),deposito:str_(row[6])}));
   return acompanharProdutos_(itens,
     table_('CONTAGENS').filter(c=>c.inventario_id===inv.inventario_id&&str_(c.centro)===centro&&str_(c.deposito)===deposito),
-    table_('RESULTADOS').filter(r=>r.inventario_id===inv.inventario_id&&str_(r.centro)===centro&&str_(r.deposito)===deposito),
+    resultadosAtivos_().filter(r=>r.inventario_id===inv.inventario_id&&str_(r.centro)===centro&&str_(r.deposito)===deposito),
     table_('RODADAS').filter(r=>r.inventario_id===inv.inventario_id&&str_(r.centro)===centro&&str_(r.deposito)===deposito),f);
 }
 
@@ -249,7 +251,7 @@ function sugerirProdutos(d){
   const rounds=sector_(inv.inventario_id,center,depot),r=rounds[rounds.length-1];
   if(!r||r.status!=='ABERTA')return {itens:[],limite:12};
   const base=inventoryBase_(inv.inventario_id,center,depot);
-  const targets=targetForRound_(r,base,table_('RESULTADOS'));
+  const targets=targetForRound_(r,base,resultadosAtivos_());
   const past=Number(r.numero)>1&&getConfig_('PERMITIR_MESMO_CONTADOR_ENTRE_RODADAS')!=='SIM'
     ?new Set(table_('CONTAGENS').filter(x=>x.usuario===u.usuario&&rounds.some(z=>z.rodada_id===x.rodada_id&&Number(z.numero)<Number(r.numero))).map(x=>str_(x.codigo)))
     :new Set();
@@ -270,10 +272,10 @@ function salvarContagem(d){return withLock_(()=>{
   const old=table_('CONTAGENS').find(x=>x.request_id===req);if(old)return {ok:true,duplicado:true,lancamento_id:old.lancamento_id};
   const center=str_(d.centro),depot=str_(d.deposito),code=str_(d.codigo),rounds=sector_(inv.inventario_id,center,depot),r=rounds[rounds.length-1];
   if(!r||r.status!=='ABERTA')throw Error('Rodada encerrada ou inexistente.');
-  if(table_('RESULTADOS').some(x=>x.rodada_id===r.rodada_id))throw Error('Esta rodada está em processo de fechamento. Solicite ao supervisor a conclusão.');
+  if(resultadosAtivos_().some(x=>x.rodada_id===r.rodada_id))throw Error('Esta rodada está em processo de fechamento. Solicite ao supervisor a conclusão.');
   const base=inventoryBase_(inv.inventario_id,center,depot),p=base.find(x=>str_(x.codigo)===code);
   if(!p)throw Error('Produto ausente na base SAP.');
-  if(!targetForRound_(r,base,table_('RESULTADOS')).some(x=>str_(x.codigo)===code))throw Error('Produto já conferido; não pode ser contado novamente.');
+  if(!targetForRound_(r,base,resultadosAtivos_()).some(x=>str_(x.codigo)===code))throw Error('Produto já conferido; não pode ser contado novamente.');
   const qty=noNeg_(decimal_(d.quantidade,'Quantidade'),'Quantidade');
   const um=norm_(p.um),precision=['UN','UND','PÇ','PC','PCS','EA','CX','KIT'].includes(um)?0:3;
   if(Math.abs(qty*Math.pow(10,precision)-Math.round(qty*Math.pow(10,precision)))>0.000001)throw Error('Unidade '+um+' aceita no máximo '+precision+' casa(s) decimal(is).');
@@ -284,7 +286,7 @@ function salvarContagem(d){return withLock_(()=>{
   writeAudit_(u.usuario,'CONTAGEM_REGISTRADA','CONTAGEM',id,{codigo:code,centro:center,deposito:depot,rodada:Number(r.numero),quantidade:qty,rua:location[0],zona:location[1],posicao:location[2],palete:location[3]});
   return {ok:true,duplicado:false,lancamento_id:id};
 });}
-function getOverview_(inv){const base=inventoryBase_(inv.inventario_id),results=table_('RESULTADOS').filter(x=>x.inventario_id===inv.inventario_id),latest=latestResultsMap_(results);
+function getOverview_(inv){const base=inventoryBase_(inv.inventario_id),results=resultadosAtivos_().filter(x=>x.inventario_id===inv.inventario_id),latest=latestResultsMap_(results);
   let encerrados=0,conferidos=0,pendentesAprovacao=0;for(const p of base){const r=latest.get(p.chave);if(r){encerrados++;if(Math.abs(Number(r.diferenca))<0.0000001)conferidos++;if(r.status==='APROVACAO_PENDENTE')pendentesAprovacao++;}}
   const aprovados=new Set(table_('APROVACOES').filter(x=>x.inventario_id===inv.inventario_id).map(x=>x.resultado_id));
   return {total_skus:base.length,skus_com_resultado:encerrados,conferidos,pendentes_aprovacao:Math.max(0,pendentesAprovacao-[...latest.values()].filter(r=>aprovados.has(r.resultado_id)).length),aprovados:aprovados.size};
@@ -345,13 +347,13 @@ function acompanharProdutos_(base,counts,results,rounds,filter){
 }
 
 /** Dashboard somente para supervisor. Consolidação por endereço da última rodada de cada produto. */
-function painel(d){exigirSemLimpeza_();const u=auth_(d.token);requireSupervisor_(u);const inv=activeInventory_();const base=inventoryBase_(inv.inventario_id),counts=table_('CONTAGENS').filter(x=>x.inventario_id===inv.inventario_id),rounds=table_('RODADAS').filter(x=>x.inventario_id===inv.inventario_id),results=table_('RESULTADOS').filter(x=>x.inventario_id===inv.inventario_id),approved=table_('APROVACOES').filter(x=>x.inventario_id===inv.inventario_id);
+function painel(d){exigirSemLimpeza_();const u=auth_(d.token);requireSupervisor_(u);const inv=activeInventory_();const base=inventoryBase_(inv.inventario_id),counts=table_('CONTAGENS').filter(x=>x.inventario_id===inv.inventario_id),rounds=table_('RODADAS').filter(x=>x.inventario_id===inv.inventario_id),results=resultadosAtivos_().filter(x=>x.inventario_id===inv.inventario_id),approved=table_('APROVACOES').filter(x=>x.inventario_id===inv.inventario_id);
   const approvedIds=new Set(approved.map(x=>x.resultado_id)),latest=latestResultsMap_(results),latestRound=new Map(),group=new Map();
   for(const r of rounds){const k=r.centro+'|'+r.deposito,old=latestRound.get(k);if(!old||Number(r.numero)>Number(old.numero))latestRound.set(k,r);}
   const sectorData=[];
   for(const round of latestRound.values()){
     const items=base.filter(x=>x.centro===round.centro&&x.deposito===round.deposito),target=targetForRound_(round,items,results),set=new Set(counts.filter(c=>c.rodada_id===round.rodada_id).map(c=>c.codigo));
-    sectorData.push({centro:round.centro,deposito:round.deposito,rodada_id:round.rodada_id,numero:Number(round.numero),status:round.status,total_alvo:target.length,produtos_registrados:target.filter(x=>set.has(x.codigo)).length,produtos_faltando:target.filter(x=>!set.has(x.codigo)).slice(0,25).map(x=>x.codigo),faltando_total:target.filter(x=>!set.has(x.codigo)).length});
+    sectorData.push({pode_reabrir:round.status==='ENCERRADA'&&results.some(x=>x.rodada_id===round.rodada_id)&&!results.some(x=>x.rodada_id===round.rodada_id&&approvedIds.has(x.resultado_id)),centro:round.centro,deposito:round.deposito,rodada_id:round.rodada_id,numero:Number(round.numero),status:round.status,total_alvo:target.length,produtos_registrados:target.filter(x=>set.has(x.codigo)).length,produtos_faltando:target.filter(x=>!set.has(x.codigo)).slice(0,25).map(x=>x.codigo),faltando_total:target.filter(x=>!set.has(x.codigo)).length});
   }
   const roundNumberById=new Map(rounds.map(r=>[str_(r.rodada_id),Number(r.numero)]));
   const currentRoundOf=new Map();for(const c of counts){const key=normalizeKey_(c.codigo,c.centro,c.deposito),number=roundNumberById.get(str_(c.rodada_id))||0,old=currentRoundOf.get(key);if(!old||number>old.numero)currentRoundOf.set(key,{numero:number,rodada_id:c.rodada_id});}
@@ -368,7 +370,7 @@ function painel(d){exigirSemLimpeza_();const u=auth_(d.token);requireSupervisor_
 function encerrarRodada(d){return withLock_(()=>{
   exigirSemLimpeza_();const u=auth_(d.token);requireSupervisor_(u);const inv=activeInventory_();const allRounds=table_('RODADAS'),r=allRounds.find(x=>x.rodada_id===str_(d.rodada_id)&&x.inventario_id===inv.inventario_id);
   if(!r||r.status!=='ABERTA')throw Error('Rodada já encerrada ou inválida.');
-  const base=inventoryBase_(inv.inventario_id,r.centro,r.deposito),results=table_('RESULTADOS'),targets=targetForRound_(r,base,results),counts=table_('CONTAGENS').filter(c=>c.rodada_id===r.rodada_id),totals=new Map();
+  const base=inventoryBase_(inv.inventario_id,r.centro,r.deposito),results=resultadosAtivos_(),targets=targetForRound_(r,base,results),counts=table_('CONTAGENS').filter(c=>c.rodada_id===r.rodada_id),totals=new Map();
   for(const c of counts)totals.set(str_(c.codigo),(totals.get(str_(c.codigo))||0)+Number(c.quantidade));
   const missing=targets.filter(b=>!totals.has(str_(b.codigo)));if(missing.length)throw Error('Não é possível encerrar: '+missing.length+' materiais sem contagem (nem zero). Primeiros códigos: '+missing.slice(0,12).map(x=>x.codigo).join(', '));
   if(!targets.length)throw Error('Nenhum material pendente nesta rodada.');
@@ -383,10 +385,63 @@ function encerrarRodada(d){return withLock_(()=>{
   writeAudit_(u.usuario,'RODADA_ENCERRADA','RODADA',r.rodada_id,{centro:r.centro,deposito:r.deposito,numero:r.numero,materiais:out.length,divergentes});
   return {ok:true,numero:Number(r.numero),materiais:out.length,divergentes};
 });}
+/** Reabre exclusivamente a ÚLTIMA rodada encerrada de um centro/depósito.
+ * Não remove contagens nem resultados antigos: marca os resultados anteriores como
+ * REABERTO (histórico), e os cálculos usam somente resultados ativos.
+ * O estado intermediário REABRINDO permite retomar uma execução interrompida.
+ */
+function reabrirRodada(d){return withLock_(()=>{
+  exigirSemLimpeza_();
+  const u=auth_(d&&d.token);requireSupervisor_(u);
+  const motivo=str_(d&&d.motivo);
+  if(motivo.length<10)throw Error('Informe uma justificativa de pelo menos 10 caracteres para reabrir.');
+  const inv=activeInventory_(),id=str_(d&&d.rodada_id);
+  const rodadas=table_('RODADAS').filter(x=>x.inventario_id===inv.inventario_id);
+  const rodada=rodadas.find(x=>str_(x.rodada_id)===id);
+  if(!rodada)throw Error('Rodada não encontrada no inventário ativo.');
+  if(!['ENCERRADA','REABRINDO'].includes(str_(rodada.status)))throw Error('A rodada deve estar encerrada para ser reaberta.');
+  const seguintes=rodadas.filter(x=>str_(x.centro)===str_(rodada.centro)&&str_(x.deposito)===str_(rodada.deposito)&&Number(x.numero)>Number(rodada.numero));
+  if(seguintes.length)throw Error('Não é possível reabrir: uma rodada posterior já foi iniciada.');
+
+  const todos=table_('RESULTADOS').filter(x=>str_(x.rodada_id)===id&&x.inventario_id===inv.inventario_id);
+  if(!todos.length)throw Error('Fechamento sem resultados consolidados. Solicite verificação administrativa.');
+  const ids=new Set(todos.map(x=>str_(x.resultado_id)));
+  if(table_('APROVACOES').some(x=>ids.has(str_(x.resultado_id))))
+    throw Error('Não é possível reabrir: já existe aprovação de divergência nesta rodada.');
+
+  // Registra intenção antes da alteração dos resultados. Em uma falha intermediária,
+  // a rodada fica REABRINDO e o supervisor poderá repetir a operação para concluir.
+  const allRounds=table_('RODADAS'),index=allRounds.findIndex(x=>str_(x.rodada_id)===id);
+  const roundSheet=sh_('RODADAS');
+  if(rodada.status==='ENCERRADA'){
+    writeAudit_(u.usuario,'REABERTURA_INICIADA','RODADA',id,
+      {centro:rodada.centro,deposito:rodada.deposito,numero:Number(rodada.numero),motivo,resultados:todos.length});
+    roundSheet.getRange(index+2,6).setValue('REABRINDO');
+  }
+
+  const resultSheet=sh_('RESULTADOS'),last=resultSheet.getLastRow();
+  const values=last>1?resultSheet.getRange(2,1,last-1,SCHEMA.RESULTADOS.length).getValues():[];
+  // Atualiza blocos contíguos em lote; somente resultados da rodada são invalidados.
+  let invalidated=0,runStart=-1,runLength=0;
+  const flush=()=>{
+    if(runLength){resultSheet.getRange(runStart+2,11,runLength,1).setValues(Array.from({length:runLength},()=>['REABERTO']));runStart=-1;runLength=0;}
+  };
+  for(let i=0;i<values.length;i++){
+    const row=values[i],target=str_(row[2])===id&&str_(row[10])!=='REABERTO';
+    if(target){if(runLength===0)runStart=i;runLength++;invalidated++;}else flush();
+  }
+  flush();
+  // Preserva todos os lançamentos da contagem física e suas localizações.
+  writeAudit_(u.usuario,'RODADA_REABERTA','RODADA',id,
+    {centro:rodada.centro,deposito:rodada.deposito,numero:Number(rodada.numero),motivo,resultados_anteriores:todos.length,resultados_invalidados_nesta_execucao:invalidated});
+  roundSheet.getRange(index+2,6).setValue('ABERTA');
+  roundSheet.getRange(index+2,8,1,2).setValues([['','']]);
+  return {ok:true,numero:Number(rodada.numero),centro:str_(rodada.centro),deposito:str_(rodada.deposito),resultados_anteriores:todos.length,lancamentos_preservados:true};
+});}
 function abrirProximaRodada(d){return withLock_(()=>{
   exigirSemLimpeza_();const u=auth_(d.token);requireSupervisor_(u);const inv=activeInventory_(),rounds=sector_(inv.inventario_id,d.centro,d.deposito);const r=rounds[rounds.length-1];
   if(!r||r.status!=='ENCERRADA')throw Error('Encerre a rodada atual primeiro.');if(Number(r.numero)>=3)throw Error('Limite de três rodadas atingido.');
-  const divergents=table_('RESULTADOS').filter(x=>x.rodada_id===r.rodada_id&&Math.abs(Number(x.diferenca))>0.0000001);
+  const divergents=resultadosAtivos_().filter(x=>x.rodada_id===r.rodada_id&&Math.abs(Number(x.diferenca))>0.0000001);
   if(!divergents.length)throw Error('Todos os materiais foram conferidos; não há divergências.');
   const id=uuid_();appendMany_('RODADAS',[[id,inv.inventario_id,str_(r.centro),str_(r.deposito),Number(r.numero)+1,'ABERTA',iso_(),'','']]);
   writeAudit_(u.usuario,'RODADA_ABERTA','RODADA',id,{centro:r.centro,deposito:r.deposito,numero:Number(r.numero)+1,alvos:divergents.length});
@@ -394,7 +449,7 @@ function abrirProximaRodada(d){return withLock_(()=>{
 });}
 function aprovarDivergencia(d){return withLock_(()=>{
   exigirSemLimpeza_();const u=auth_(d.token);requireSupervisor_(u);const reason=str_(d.motivo);if(reason.length<8)throw Error('Informe uma justificativa com pelo menos oito caracteres.');
-  const res=table_('RESULTADOS').find(x=>x.resultado_id===str_(d.resultado_id)&&x.status==='APROVACAO_PENDENTE');if(!res)throw Error('Divergência não está aguardando aprovação.');
+  const res=resultadosAtivos_().find(x=>x.resultado_id===str_(d.resultado_id)&&x.status==='APROVACAO_PENDENTE');if(!res)throw Error('Divergência não está aguardando aprovação.');
   if(table_('APROVACOES').some(x=>x.resultado_id===res.resultado_id))throw Error('Divergência já aprovada.');
   const id=uuid_();appendMany_('APROVACOES',[[id,res.resultado_id,res.inventario_id,res.codigo,res.centro,res.deposito,res.quantidade_sap,res.quantidade_contada,res.diferenca,reason,u.usuario,iso_()]]);
   writeAudit_(u.usuario,'DIVERGENCIA_APROVADA','RESULTADO',res.resultado_id,{codigo:res.codigo,centro:res.centro,deposito:res.deposito,diferenca:res.diferenca,motivo:reason});
