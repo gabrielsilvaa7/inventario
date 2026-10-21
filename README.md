@@ -1,4 +1,4 @@
-# Inventário SAP — GitHub Pages + Google Apps Script
+# Inventário Friovix — GitHub Pages + Google Apps Script
 
 Aplicação de inventário físico industrial com endereço **Rua / Zona / Posição / Palete**. O site fica no **GitHub Pages**, mas o banco é uma **nova planilha Google privada**, criada automaticamente pelo Apps Script. A planilha original do SAP é consultada e **não é modificada**.
 
@@ -17,7 +17,23 @@ Aplicação de inventário físico industrial com endereço **Rua / Zona / Posi�
 - Consolidação de endereços na última rodada registrada do material, sem misturar rodadas.
 - Divergências após a terceira rodada precisam de aprovação do supervisor, sem lançamento automático no SAP.
 - Log de auditoria: login, tentativa malsucedida, lançamento, encerramento/abertura, aprovação, criação de usuário, mudança de configuração.
-- Painel de supervisão e filtro de endereço. Atualiza ao recarregar a página ou clicar em **Atualizar**.
+- Dashboard com **lista paginada de 50 produtos** por centro e depósito, código, descrição, estados da 1ª/2ª/3ª contagem (verde, amarelo, vermelho), situação **Estoque Batendo / Estoque Divergente** e progresso de produtos iniciados/concluídos.
+- Autocomplete na tela de contagem por **código ou descrição**, restrito ao centro/depósito e à rodada atual (máximo 12 sugestões).
+- Filtro de localização por endereço físico. A aba AUDITORIA fica acessível somente na planilha privada, não na interface.
+- Menu de seleção de Centro + Depósito **sem a rodada**. A rodada continua visível na ficha do produto e no painel de supervisão.
+- Atualiza ao recarregar a página ou clicar em **Atualizar**.
+
+## Atualização da versão 3 — backend já instalado
+
+**Não execute `instalarProjeto` outra vez!** O Google Sheets e as propriedades já estão configurados. Para ativar autocomplete e o novo dashboard, abra o projeto existente em Apps Script, substitua **Code.gs** e **Bridge.html** pelos arquivos em `apps-script/`, salve e faça **Implantar > Gerenciar implantações > Editar > Nova versão > Implantar**. Preserve a mesma implantação/URL `/exec`, quando possível. O `config.js` já contém a URL atual.
+
+A evolução é calculada **por centro + depósito**, com:
+- **Contagem iniciada:** total de SKUs que receberam pelo menos um lançamento em qualquer rodada / total de SKUs da base.
+- **Contagem concluída:** SKUs conferidos em alguma rodada encerrada ou divergentes após a terceira rodada encerrada / total de SKUs da base.
+- Verde quando uma rodada encerrada confere com o SAP; amarelo quando a 1ª rodada não confere; vermelho quando a 2ª ou 3ª rodada não confere. Lançamentos ainda não encerrados ficam azuis, sem antecipar resultado.
+- O estado **Estoque Divergente** só ocorre ao finalizar a terceira rodada com diferença. Na primeira e na segunda, indica-se a próxima rodada necessária.
+
+Apenas o frontend no GitHub não basta para essas novas funções: é obrigatório atualizar e reimplantar o Apps Script.
 
 ## NOVO — Modo TESTE e OFICIAL (Administração)
 
@@ -123,6 +139,7 @@ Se aparecer **Configuração pendente**, isso é esperado até concluir a implan
 ## Observações importantes
 
 - **Não se deve comparar SAP e contagem antes do encerramento formal**, pois um produto pode estar distribuído em muitos endereços.
+- A tela de login, o nome do site e os demais rótulos da interface usam **Inventário Friovix**; a planilha de banco já existente mantém seu nome para preservar suas referências.
 - O sistema não dispara alertas quando dois operadores usam **o mesmo endereço**, conforme a regra operacional escolhida; a equipe deve controlar a cobertura física e evitar recontagem indevida.
 - O saldo de referência usado é a coluna `QUANTIDADE`. `ESTOQUE BLOQUEADO`, `EM TRANSFERENCIA (CENTRO)` e `TRANSITO E TE` são preservados, mas não somados automaticamente à quantidade contábil. A TI/logística deverá validar o escopo.
 - Valor total SAP é preservado, mas **não** convertido automaticamente em custo unitário/impacto da divergência sem validação de critérios contábeis.
