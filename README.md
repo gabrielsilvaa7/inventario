@@ -16,6 +16,21 @@ Na aba **Supervisão**, o supervisor ou administrador pode clicar em **Reabrir**
 
 **Para ativar no Apps Script existente:** substitua `Code.gs` e `Bridge.html` e selecione **Implantar → Gerenciar implantações → Editar → Nova versão → Implantar**. Não execute `instalarProjeto` novamente. A planilha de dados não precisa ser recriada.
 
+## Atualização — velocímetro e exportação de recontagens (v7)
+
+O **Dashboard** agora apresenta um velocímetro de progresso global com a porcentagem de **produtos (Código + Centro + Depósito) que receberam ao menos um lançamento**, mesmo que a quantidade lançada seja zero. Repetir registros parciais do mesmo produto não aumenta o numerador. A métrica considera todos os centros e depósitos da base ativa e não exige que o supervisor já tenha encerrado a rodada. Os indicadores de produtos **concluídos** continuam separados.
+
+No painel **Acompanhamento de produtos**, após selecionar o centro e depósito:
+
+- **Exportar 2ª contagem** fica disponível quando a primeira rodada for encerrada e houver produtos divergentes.
+- **Exportar 3ª contagem** fica disponível quando a segunda rodada for encerrada e persistirem divergências.
+- Os botões aparecem somente se existir uma lista para exportar naquele centro/depósito. São visíveis a **supervisores e administradores**.
+- Cada exportação gera um **CSV UTF-8 com BOM e separador ponto e vírgula**, compatível com importação no Excel. Contém código, descrição, UM, centro, depósito, número da rodada e colunas em branco de endereço/quantidade para preenchimento. **Não inclui saldo SAP, diferença, valor monetário ou quantidades anteriormente contadas**, preservando a independência das recontagens.
+- A lista é conferida novamente pelo backend no momento da exportação; um operador sem perfil de supervisão ou uma rodada anterior não encerrada não consegue gerar o arquivo.
+- A ação é registrada na aba privada `AUDITORIA`; exportar não modifica contagens nem rodadas.
+
+**Para ativar no sistema existente:** copie a versão mais recente de `apps-script/Code.gs` e `apps-script/Bridge.html` para o projeto Google Apps Script, salve e faça **Implantar → Gerenciar implantações → Editar → Nova versão → Implantar**. Preserve o URL `/exec` atual. Não execute `instalarProjeto` novamente e não altere a planilha de banco.
+
 ## O que já funciona
 
 - Login com usuário/senha; perfis `CONTADOR`, `SUPERVISOR` e `ADMIN`.
