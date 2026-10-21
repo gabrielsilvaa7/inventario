@@ -1,7 +1,7 @@
-/* Inventário SAP — Cliente GitHub Pages. Nenhum segredo é colocado neste arquivo. */
+/* Inventário Friovix — Cliente GitHub Pages. Nenhum segredo é colocado neste arquivo. */
 'use strict';
 const $=id=>document.getElementById(id);
-const state={bridgeWindow:null,bridgeOrigin:'',channel:'',ready:false,pending:new Map(),token:sessionStorage.getItem('inventario_session')||'',usuario:null,context:null,product:null,dashboard:null,requestId:null,tab:'contagem'};
+const state={bridgeWindow:null,bridgeOrigin:'',channel:'',ready:false,pending:new Map(),token:sessionStorage.getItem('inventario_session')||'',usuario:null,context:null,product:null,dashboard:null,requestId:null,tab:'contagem',productPage:1,suggestionSequence:0,suggestionTimer:null,suggestions:[],suggestionActive:-1};
 const safe=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const num=v=>new Intl.NumberFormat('pt-BR',{maximumFractionDigits:3}).format(Number(v)||0);
 const random=()=>typeof crypto!=='undefined'&&crypto.randomUUID?crypto.randomUUID():String(Date.now())+'-'+Math.random().toString(36).slice(2);
@@ -41,9 +41,10 @@ function canSupervise(){return state.usuario&&['ADMIN','SUPERVISOR'].includes(st
 function applyRole(){document.querySelectorAll('.supervisor-only').forEach(n=>n.classList.toggle('hidden-role',!canSupervise()));document.querySelectorAll('.admin-only').forEach(n=>n.classList.toggle('hidden-role',state.usuario.perfil!=='ADMIN'));}
 function switchTab(tab){if((tab==='painel'||tab==='supervisao')&&!canSupervise())return;if(tab==='usuarios'&&state.usuario?.perfil!=='ADMIN')return;state.tab=tab;
   document.querySelectorAll('.tab').forEach(n=>n.classList.toggle('active',n.dataset.tab===tab));document.querySelectorAll('.page').forEach(n=>n.classList.toggle('active',n.id==='tab-'+tab));}
-async function refreshContext(){state.context=await api('carregarContexto');$('inventoryName').textContent=state.context.inventario.nome;renderModeBadge(state.context.modo);
-  const prev=$('sectorSelect').value;$('sectorSelect').innerHTML='<option value="">Selecione um setor...</option>'+state.context.setores.map(x=>`<option value="${safe(x.centro+'|'+x.deposito)}">Centro ${safe(x.centro)} · Depósito ${safe(x.deposito)} · R${x.numero} ${safe(x.status)}</option>`).join('');
+async function refreshContext(){state.context=await api('carregarContexto');$('inventoryName').textContent='Controle físico de estoque';renderModeBadge(state.context.modo);
+  const prev=$('sectorSelect').value;$('sectorSelect').innerHTML='<option value="">Selecione centro e depósito...</option>'+state.context.setores.map(x=>`<option value="${safe(x.centro+'|'+x.deposito)}">Centro ${safe(x.centro)} · Depósito ${safe(x.deposito||'Não informado')}</option>`).join('');
   if([...$('sectorSelect').options].some(x=>x.value===prev))$('sectorSelect').value=prev;
+  renderDashboardSectorOptions();
 }
 function renderModeBadge(mode){
   const badge=$('modeBadge');badge.textContent='Modo: '+(mode==='OFICIAL'?'OFICIAL':'TESTE');
@@ -105,7 +106,87 @@ async function startOfficialInventory(){
 }
 function currentSector(){const val=$('sectorSelect').value;if(!val)throw Error('Selecione Centro e Depósito.');const [centro,deposito]=val.split('|');return {centro,deposito};}
 function resetProduct(){state.product=null;state.requestId=null;$('saveCount').disabled=true;$('countUnit').textContent='';$('productInfo').className='product-card muted';$('productInfo').textContent='Busque um produto no centro e depósito selecionados.';}
-async function searchProduct(event){event.preventDefault();const button=$('searchForm').querySelector('button');btnBusy(button,true,'Buscando...');resetProduct();try{
+function renderDashboardSectorOptions(centerChanged=false){
+  const areas=state.context?.setores||[];
+  const centers=[...new Set(areas.map(x=>String(x.centro)))].sort((a,b)=>a.localeCompare(b,'pt-BR',{numeric:true}));
+  const oldCenter=$('dashboardCenter').value;
+  $('dashboardCenter').innerHTML=centers.map(c=>`<option value="${safe(c)}">Centro ${safe(c)}</option>`).join('');
+  $('dashboardCenter').value=centers.includes(oldCenter)?oldCenter:centers[0]||'';
+  const depots=[...new Set(areas.filter(x=>String(x.centro)===$('dashboardCenter').value).map(x=>String(x.deposito)))].sort((a,b)=>a.localeCompare(b,'pt-BR',{numeric:true}));
+  const oldDepot=centerChanged?'':$('dashboardDepot').value;
+  $('dashboardDepot').innerHTML=depots.map(d=>`<option value="${safe(d)}">Depósito ${safe(d||'Não informado')}</option>`).join('');
+  $('dashboardDepot').value=depots.includes(oldDepot)?oldDepot:depots[0]||'';
+}
+function hideSuggestions(){
+  state.suggestionSequence++;
+  if(state.suggestionTimer){clearTimeout(state.suggestionTimer);state.suggestionTimer=null;}
+  state.suggestions=[];state.suggestionActive=-1;
+  $('productSuggestions').hidden=true;$('productSuggestions').innerHTML='';
+  $('productCode').setAttribute('aria-expanded','false');
+}
+function paintSuggestions(items){
+  state.suggestions=items;state.suggestionActive=-1;
+  const list=$('productSuggestions');
+  list.innerHTML=items.length?items.map((x,i)=>`<button type="button" role="option" id="productSuggestion${i}" aria-selected="false" data-suggest-code="${safe(x.codigo)}" class="suggestion"><strong>${safe(x.codigo)}</strong><span>${safe(x.descricao)}</span><small>${safe(x.um)}</small></button>`).join(''):'<div class="suggestion-empty">Nenhum produto disponível nesta rodada.</div>';
+  list.hidden=false;$('productCode').setAttribute('aria-expanded','true');
+}
+function queueSuggestions(){
+  const seq=++state.suggestionSequence;
+  if(state.suggestionTimer)clearTimeout(state.suggestionTimer);
+  const term=$('productCode').value.trim(),selection=$('sectorSelect').value;
+  if(term.length<2||!selection){hideSuggestions();return;}
+  const [centro,deposito]=selection.split('|');
+  state.suggestionTimer=setTimeout(async()=>{
+    try{
+      const data=await api('sugerirProdutos',{centro,deposito,termo:term});
+      if(seq!==state.suggestionSequence||selection!==$('sectorSelect').value||term!==$('productCode').value.trim())return;
+      paintSuggestions(data.itens||[]);
+    }catch(err){if(seq===state.suggestionSequence)hideSuggestions();}
+  },260);
+}
+async function pickSuggestion(code){
+  $('productCode').value=code;
+  hideSuggestions();
+  await searchProduct({preventDefault(){}});
+}
+function suggestionsKeydown(e){
+  if($('productSuggestions').hidden)return;
+  const items=state.suggestions;
+  if(e.key==='Escape'){e.preventDefault();hideSuggestions();return;}
+  if((e.key==='ArrowDown'||e.key==='ArrowUp')&&items.length){
+    e.preventDefault();state.suggestionActive=(state.suggestionActive+(e.key==='ArrowDown'?1:-1)+items.length)%items.length;
+    [...$('productSuggestions').querySelectorAll('[role="option"]')].forEach((node,i)=>node.setAttribute('aria-selected',String(i===state.suggestionActive)));
+    $('productCode').setAttribute('aria-activedescendant','productSuggestion'+state.suggestionActive);
+    return;
+  }
+  if(e.key==='Enter'&&state.suggestionActive>=0){e.preventDefault();pickSuggestion(items[state.suggestionActive].codigo);}
+}
+function roundCell(code,index){
+  const classes={CONFERIDO:['passed','Conferido'],SEGUNDA_CONTAGEM:['warning','Recontar'],DIVERGENTE:['failed',index===1?'3ª necessária':'Divergente'],EM_CONTAGEM:['active','Em contagem'],PENDENTE:['pending','Pendente']};
+  const [color,label]=classes[code]||classes.PENDENTE;
+  return `<span class="round-state ${color}" title="${safe(label)}"><span class="round-dot ${color}" aria-hidden="true"></span>${safe(label)}</span>`;
+}
+function paintFollowup(data){
+  if(!data)return;
+  state.productPage=data.pagina;
+  const fmtPercent=n=>String(n||0)+'%';
+  $('progressOverview').innerHTML=`
+    <div class="progress-tile"><span>Produtos deste centro/depósito</span><strong>${num(data.total)}</strong></div>
+    <div class="progress-tile"><span>Contagem iniciada</span><strong>${num(data.contados)} <small>(${fmtPercent(data.progresso)})</small></strong><div class="progress-track"><div class="progress-fill started" style="width:${data.progresso}%"></div></div></div>
+    <div class="progress-tile"><span>Contagem concluída</span><strong>${num(data.concluidos)} <small>(${fmtPercent(data.conclusao)})</small></strong><div class="progress-track"><div class="progress-fill completed" style="width:${data.conclusao}%"></div></div></div>
+    <div class="progress-tile"><span>Estoque batendo</span><strong>${num(data.batendo)}</strong><small>${num(data.divergentes)} divergentes após 3 rodadas</small></div>`;
+  $('followupBody').innerHTML=data.itens.length?data.itens.map(x=>`<tr>
+    <td><strong>${safe(x.codigo)}</strong></td><td class="product-description">${safe(x.descricao)}</td><td>${safe(x.centro)}</td><td>${safe(x.deposito||'—')}</td>
+    ${x.rodadas.map((s,i)=>`<td>${roundCell(s,i)}</td>`).join('')}
+    <td><span class="final-status ${safe(x.tipo)}">${safe(x.situacao)}</span></td>
+  </tr>`).join(''):'<tr><td colspan="8" class="empty">Nenhum produto encontrado para este filtro.</td></tr>';
+  $('followupCount').textContent=`${num(data.total_filtrado)} produtos encontrados · Exibindo até 50 por página`;
+  $('followupPage').textContent=`Página ${num(data.pagina)} de ${num(data.total_paginas)}`;
+  $('followupPrev').disabled=data.pagina<=1;
+  $('followupNext').disabled=data.pagina>=data.total_paginas;
+}
+
+async function searchProduct(event){event.preventDefault();hideSuggestions();const button=$('searchForm').querySelector('button');btnBusy(button,true,'Buscando...');resetProduct();try{
   const scope=currentSector();const codigo=$('productCode').value.trim();if(!codigo)throw Error('Informe o código do produto.');
   const product=await api('consultarProduto',{...scope,codigo});state.product=product;
   $('productInfo').className='product-card';$('productInfo').innerHTML=`<strong>${safe(product.descricao)}</strong><div class="meta">Código ${safe(product.codigo)} · Centro ${safe(product.centro)} · Depósito ${safe(product.deposito)} · Unidade ${safe(product.um)}</div><span class="pill">Rodada ${safe(product.rodada_numero)}</span>`;
@@ -135,10 +216,10 @@ function paintDashboard(data){state.dashboard=data;const k=data.resumo;
   }).join(''):'<tr><td colspan="7" class="empty">Nenhum setor disponível.</td></tr>';
   $('approvalsBody').innerHTML=data.divergencias.length?data.divergencias.map(x=>`<tr><td>${safe(x.codigo)}</td><td>${safe(x.centro)}</td><td>${safe(x.deposito)}</td><td>${num(x.quantidade_sap)}</td><td>${num(x.quantidade_contada)}</td><td>${num(x.diferenca)}</td><td><button class="btn secondary action-small" data-approve="${safe(x.resultado_id)}">Aprovar</button></td></tr>`).join(''):'<tr><td colspan="7" class="empty">Nenhuma divergência aguardando aprovação.</td></tr>';
   $('allowSameCounter').checked=data.config.permitir_recontagem==='SIM';
-  $('auditBody').innerHTML=data.auditoria.length?data.auditoria.map(x=>`<tr><td>${safe(fmtDate(x.quando))}</td><td>${safe(x.usuario)}</td><td>${safe(x.acao)}</td><td>${safe(x.referencia)}</td></tr>`).join(''):'<tr><td colspan="4" class="empty">Sem eventos.</td></tr>';
+  paintFollowup(data.acompanhamento);
 }
 function getFilter(){return Object.fromEntries([['codigo','filterCode'],['centro','filterCenter'],['deposito','filterDepot'],['rua','filterRua'],['zona','filterZona'],['posicao','filterPosicao'],['palete','filterPalete']].map(([k,id])=>[k,$(id).value.trim()]));}
-async function refreshDashboard(){if(!canSupervise())return;try{const data=await api('painel',{filtro:getFilter()});paintDashboard(data);}catch(err){toast('Dashboard: '+err.message,'error');}}
+async function refreshDashboard(){if(!canSupervise())return;try{const data=await api('painel',{filtro:getFilter(),acompanhamento:{centro:$('dashboardCenter').value,deposito:$('dashboardDepot').value,termo:$('dashboardQuery').value.trim(),pagina:state.productPage}});paintDashboard(data);}catch(err){toast('Dashboard: '+err.message,'error');}}
 async function doClose(roundId){if(!confirm('Encerrar esta rodada? Após o fechamento nenhum contador poderá lançar neste setor até a próxima rodada.'))return;
   try{const r=await api('encerrarRodada',{rodada_id:roundId},180000);toast(`Rodada ${r.numero} encerrada. ${r.materiais} materiais, ${r.divergentes} divergências.`,'success');await refreshContext();await refreshDashboard();resetProduct();}catch(err){toast(err.message,'error');}}
 async function doOpen(value){const [centro,deposito]=value.split('|');if(!confirm(`Abrir próxima rodada para Centro ${centro} / Depósito ${deposito}?`))return;
@@ -160,10 +241,20 @@ $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const butt
 $('logoutButton').addEventListener('click',logout);
 document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
 $('searchForm').addEventListener('submit',searchProduct);$('countForm').addEventListener('submit',saveCount);
-$('sectorSelect').addEventListener('change',resetProduct);$('productCode').addEventListener('input',resetProduct);
+$('sectorSelect').addEventListener('change',()=>{resetProduct();$('productCode').value='';hideSuggestions();});$('productCode').addEventListener('input',()=>{resetProduct();queueSuggestions();});
 $('countForm').addEventListener('input',()=>state.requestId=null);
 $('filterForm').addEventListener('submit',async e=>{e.preventDefault();await refreshDashboard();});
 $('refreshDashboard').addEventListener('click',refreshDashboard);
+$('dashboardCenter').addEventListener('change',()=>{state.productPage=1;renderDashboardSectorOptions(true);refreshDashboard();});
+$('dashboardDepot').addEventListener('change',()=>{state.productPage=1;refreshDashboard();});
+$('searchFollowup').addEventListener('click',()=>{state.productPage=1;refreshDashboard();});
+$('dashboardQuery').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();state.productPage=1;refreshDashboard();}});
+$('followupPrev').addEventListener('click',()=>{if(state.productPage>1){state.productPage--;refreshDashboard();}});
+$('followupNext').addEventListener('click',()=>{if(state.productPage<(state.dashboard?.acompanhamento?.total_paginas||1)){state.productPage++;refreshDashboard();}});
+$('productCode').addEventListener('keydown',suggestionsKeydown);
+$('productCode').addEventListener('focus',()=>{if($('productCode').value.trim().length>=2)queueSuggestions();});
+$('productSuggestions').addEventListener('pointerdown',e=>{const b=e.target.closest('[data-suggest-code]');if(!b)return;e.preventDefault();pickSuggestion(b.dataset.suggestCode);});
+document.addEventListener('pointerdown',e=>{if(!e.target.closest('.product-lookup'))hideSuggestions();});
 $('sectorsBody').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.close)doClose(b.dataset.close);if(b.dataset.open)doOpen(b.dataset.open);});
 $('approvalsBody').addEventListener('click',e=>{const b=e.target.closest('button');if(b?.dataset.approve)doApprove(b.dataset.approve);});
 $('userForm').addEventListener('submit',doCreateUser);$('saveSettings').addEventListener('click',saveSettings);
