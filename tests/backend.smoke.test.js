@@ -115,6 +115,11 @@ assert.equal(env.sugerirProdutos({token:a,centro:'1025',deposito:'9',termo:'prod
 assert.equal(env.sugerirProdutos({token:a,centro:'1025',deposito:'1',termo:'a'}).itens.length,0);
 const beforeClose=env.painel({token,acompanhamento:{centro:'1025',deposito:'1'}}).acompanhamento;
 assert.equal(beforeClose.total,3);
+assert.equal(env.painel({token}).progresso_geral.total,4);
+assert.equal(env.painel({token}).progresso_geral.contados,0);
+fail(()=>env.exportarListaRecontagem({token,centro:'1025',deposito:'1',numero:2}),/encerrada/);
+fail(()=>env.exportarListaRecontagem({token,centro:'1025',deposito:'1',numero:4}),/2ª ou 3ª/);
+fail(()=>env.exportarListaRecontagem({token:a,centro:'1025',deposito:'1',numero:2}),/supervisor/);
 assert.equal(beforeClose.contados,0);
 assert.equal(beforeClose.conclusao,0);
 assert.equal(beforeClose.itens.find(x=>x.codigo==='1000').situacao,'Não iniciado');
@@ -126,6 +131,8 @@ fail(()=>count(a,'1000','1',{rua:0,zona:1,posicao:1,palete:1}),/inteiro/);
 const l1={rua:3,zona:2,posicao:15,palete:4},l2={rua:4,zona:2,posicao:8,palete:1};
 const uuid=crypto.randomUUID();count(a,'1000',8,l1,'1',uuid);assert.equal(count(a,'1000',8,l1,'1',uuid).duplicado,true);
 count(a,'1000',1,l2);count(a,'2000','1,250',l1);
+assert.equal(env.painel({token}).progresso_geral.contados,2);
+assert.equal(env.painel({token}).progresso_geral.percentual,50);
 assert.equal(env.previsualizarAtualizacaoSAP({token}).pode_atualizar,false);
 fail(()=>env.atualizarBaseSAP({token,assinatura:'errado',confirmacao:'ATUALIZAR BASE SAP'}),/CONTAGENS/);
 const duringFirst=env.painel({token,acompanhamento:{centro:'1025',deposito:'1',pagina:1,termo:'1000'}}).acompanhamento;
@@ -139,8 +146,16 @@ assert.equal(env.filtrarAcompanhamento({token,acompanhamento:{centro:'1025',depo
 assert.equal(duringFirst.itens[0].situacao,'1ª contagem em andamento');
 fail(()=>env.encerrarRodada({token,rodada_id:env.carregarContexto({token}).setores.find(x=>x.deposito==='1').rodada_id}),/sem contagem/);
 count(a,'3000',0);
+assert.equal(env.painel({token}).progresso_geral.contados,3);
+assert.equal(env.painel({token}).progresso_geral.percentual,75);
 const firstRound=env.carregarContexto({token}).setores.find(x=>x.deposito==='1').rodada_id;
 const firstClose=env.encerrarRodada({token,rodada_id:firstRound});assert.equal(firstClose.divergentes,2);
+const exp2=env.exportarListaRecontagem({token,centro:'1025',deposito:'1',numero:2});
+assert.equal(exp2.total,2);
+assert.equal(exp2.itens.map(x=>x.codigo).join(','),'1000,3000');
+assert(exp2.itens.every(x=>!('quantidade_sap' in x)&&!('diferenca' in x)));
+assert.equal(env.painel({token}).setores.find(x=>x.deposito==='1').exportacao_segunda,2);
+fail(()=>env.exportarListaRecontagem({token,centro:'1025',deposito:'1',numero:3}),/encerrada/);
 // Reabertura de fechamento acidental: lançamentos e resultado histórico permanecem.
 fail(()=>env.reabrirRodada({token:a,rodada_id:firstRound,motivo:'Fechado antes do inventário terminar'}),/supervisor/);
 fail(()=>env.reabrirRodada({token,rodada_id:firstRound,motivo:'curto'}),/justificativa/);
@@ -152,6 +167,8 @@ const launchCountBeforeReopen=env.table_('CONTAGENS').length;
 const reopenedFirst=env.reabrirRodada({token,rodada_id:firstRound,motivo:'Encerrado antes do término da verificação física'});
 assert.equal(reopenedFirst.lancamentos_preservados,true);
 assert.equal(env.carregarContexto({token}).setores.find(x=>x.deposito==='1').status,'ABERTA');
+fail(()=>env.exportarListaRecontagem({token,centro:'1025',deposito:'1',numero:2}),/encerrada/);
+assert.equal(env.painel({token}).setores.find(x=>x.deposito==='1').exportacao_segunda,0);
 assert.equal(env.resultadosAtivos_().filter(x=>x.rodada_id===firstRound).length,0,'resultado fechado deve sair dos indicadores');
 assert.equal(env.table_('RESULTADOS').filter(x=>x.rodada_id===firstRound&&x.status==='REABERTO').length,3,'histórico não pode ser apagado');
 assert.equal(env.table_('CONTAGENS').length,launchCountBeforeReopen);
@@ -206,6 +223,10 @@ assert.equal(env.resultadosAtivos_().filter(x=>x.rodada_id===second.rodada_id).l
 assert.equal(env.encerrarRodada({token,rodada_id:second.rodada_id}).divergentes,1);
 
 const closedSecond=env.painel({token,acompanhamento:{centro:'1025',deposito:'1'}}).acompanhamento;
+const exp3=env.exportarListaRecontagem({token,centro:'1025',deposito:'1',numero:3});
+assert.equal(exp3.total,1);
+assert.equal(exp3.itens[0].codigo,'3000');
+assert.equal(env.painel({token}).setores.find(x=>x.deposito==='1').exportacao_terceira,1);
 assert.equal(closedSecond.itens.find(x=>x.codigo==='1000').rodadas[1],'CONFERIDO');
 assert.equal(closedSecond.itens.find(x=>x.codigo==='1000').situacao,'Estoque Batendo');
 assert.equal(closedSecond.itens.find(x=>x.codigo==='3000').rodadas[1],'DIVERGENTE');
@@ -242,6 +263,8 @@ db.getSheetByName('RESULTADOS').rows.push([crypto.randomUUID(),installed.inventa
 fail(()=>count(a,'1000',1,l1,'9'),/processo de fechamento/);
 const recovered=env.encerrarRodada({token,rodada_id:sector9.rodada_id});assert.equal(recovered.divergentes,0);
 assert.equal(db.getSheetByName('RESULTADOS').rows.filter(x=>x[2]===sector9.rodada_id).length,1,'não duplicar resultados na recuperação');
+assert.equal(env.painel({token}).progresso_geral.contados,4);
+assert.equal(env.painel({token}).progresso_geral.percentual,100);
 assert.equal(source.getSheetByName('Data').getLastRow(),5,'fonte SAP deveria permanecer intacta');
 // Administração de ambiente: simulamos três rodadas, aprovações e depois limpeza total.
 const before=env.estadoAmbiente({token});
@@ -260,6 +283,8 @@ assert.equal(env.table_('USUARIOS').length,4);
 assert.equal(env.table_('AUDITORIA').length,1);
 assert.equal(env.table_('AUDITORIA')[0].acao,'AMBIENTE_TESTE_LIMPO');
 assert.equal(env.painel({token}).resumo.total_lancamentos,0);
+assert.equal(env.painel({token}).progresso_geral.contados,0);
+assert.equal(env.painel({token}).progresso_geral.percentual,0);
 // Paginação do acompanhamento e interpretação da 3ª rodada conferida.
 const many=Array.from({length:61},(_,i)=>({chave:(7000+i)+'|1025|1',codigo:String(7000+i),descricao:'Tubo cobre '+i,centro:'1025',deposito:'1'}));
 const paged=env.acompanharProdutos_(many,[],[],[],{centro:'1025',deposito:'1',pagina:2});
@@ -305,4 +330,4 @@ fail(()=>env.limparDadosTeste({token,confirmacao:'APAGAR TESTES'}),/proibida/);
 assert.equal(env.table_('CONTAGENS').length,3);
 assert.equal(source.getSheetByName('Data').getLastRow(),5,'fonte SAP não deve mudar durante resets/ativação');
 env.sair({token});fail(()=>env.sessaoAtual({token}),/expirada|inválida/);
-console.log('OK: reabertura supervisionada, preservação/auditoria, bloqueios de rodada posterior e aprovação, recuperação e modo oficial; pesquisa por código/descrição; dashboard progressivo das 3 rodadas, fechamento, percentuais, centros/depósitos, ocultação de auditoria; inventário TESTE/OFICIAL e demais regras.');
+console.log('OK: velocímetro global por SKU sem duplicar lançamentos; exportação cega da segunda/terceira contagem; segurança, bloqueio de rodada reaberta e demais testes de inventário.');
