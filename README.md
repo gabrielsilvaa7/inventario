@@ -35,6 +35,12 @@ Na aba **Supervisão**, o supervisor ou administrador pode clicar em **Reabrir**
 - Menu de seleção de Centro + Depósito **sem a rodada**. A rodada continua visível na ficha do produto e no painel de supervisão.
 - Atualiza ao recarregar a página ou clicar em **Atualizar**.
 
+## Nova função — Atualizar Base SAP (administradores, modo TESTE)
+
+No menu **Administração**, use **Verificar alterações** para comparar a planilha SAP de origem com a versão atual (novos, removidos, alterados, saldos e depósitos). Após revisar, utilize **Atualizar Base SAP**. Exige a limpeza das contagens de teste e confirmação digitada. No modo OFICIAL, a atualização fica bloqueada. Versões anteriores permanecem preservadas no Google Sheets. Consulte [o guia completo](docs/ATUALIZACAO_BASE_SAP.md).
+
+**IMPORTANTE:** para ativar, atualize `apps-script/Code.gs` e `apps-script/Bridge.html` no projeto Apps Script existente e publique **uma nova versão da implantação**. Não execute `instalarProjeto` outra vez.
+
 ## Atualização da versão 3 — backend já instalado
 
 **Não execute `instalarProjeto` outra vez!** O Google Sheets e as propriedades já estão configurados. Para ativar autocomplete e o novo dashboard, abra o projeto existente em Apps Script, substitua **Code.gs** e **Bridge.html** pelos arquivos em `apps-script/`, salve e faça **Implantar > Gerenciar implantações > Editar > Nova versão > Implantar**. Preserve a mesma implantação/URL `/exec`, quando possível. O `config.js` já contém a URL atual.
