@@ -98,3 +98,25 @@
 .btn.outline-reopen{background:#fff;border:1px solid #52749b;color:#244b73;font-weight:750}
 .btn.outline-reopen:hover:not(:disabled){background:#eaf2fc}
 @media(max-width:600px){.round-actions{flex-direction:column;align-items:stretch;min-width:130px}}
+
+
+/* Inventário Friovix — velocímetro global por SKU e listas cegas de recontagem */
+.gauge-panel{display:flex;align-items:center;justify-content:space-between;gap:28px;min-height:225px;background:linear-gradient(110deg,#fff 45%,#f0f5fb 100%)}
+.gauge-intro{max-width:670px}
+.gauge-intro h3{font-size:1.19rem;margin:0 0 10px}
+.gauge-intro p{font-size:.86rem;line-height:1.65;margin:0}
+.gauge-visual{position:relative;width:265px;min-width:235px;height:175px;flex-shrink:0;text-align:center}
+.gauge-svg{display:block;width:100%;height:146px;overflow:visible}
+.gauge-track{stroke:#e2e9f3}
+.gauge-fill{stroke:var(--accent);transition:stroke-dashoffset .65s ease-out,stroke .3s ease}
+.gauge-number{position:absolute;bottom:1px;left:0;right:0;display:grid;gap:1px}
+.gauge-number strong{font-size:2.15rem;font-weight:850;line-height:1.1;letter-spacing:-.05em;color:var(--navy);font-variant-numeric:tabular-nums}
+.gauge-number span{font-size:.79rem;color:var(--muted);font-weight:650}
+.recount-export-panel{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 17px;margin:3px 0 17px;background:#f7f9fc;border:1px solid #dbe5f0;border-radius:11px}
+.recount-export-copy{display:grid;gap:5px;max-width:580px}
+.recount-export-copy strong{font-size:.89rem}
+.recount-export-copy span{font-size:.78rem;color:var(--muted);line-height:1.45}
+.recount-export-buttons{display:flex;align-items:center;flex-wrap:wrap;gap:9px}
+.recount-export-buttons .btn{white-space:nowrap}
+@media(max-width:850px){.gauge-panel{flex-direction:column;align-items:stretch;gap:6px}.gauge-visual{margin:0 auto}.recount-export-panel{flex-direction:column;align-items:stretch}.recount-export-buttons .btn{flex:1;white-space:normal}}
+@media(max-width:440px){.recount-export-buttons{flex-direction:column;align-items:stretch}.recount-export-buttons .btn{width:100%}}
