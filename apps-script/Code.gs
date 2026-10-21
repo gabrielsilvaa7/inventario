@@ -25,7 +25,21 @@ const PASSWORD_ROUNDS = 5000; // MVP: hash salgado + segredo servidor; auditar a
 function props_(){ return PropertiesService.getScriptProperties(); }
 function prop_(name){ return String(props_().getProperty(name)||'').trim(); }
 function db_(){ const id=prop_('DB_SPREADSHEET_ID'); if(!id)throw Error('Projeto ainda não instalado: DB_SPREADSHEET_ID ausente.'); return SpreadsheetApp.openById(id); }
-function sh_(name){ const x=db_().getSheetByName(name); if(!x)throw Error('Aba ausente: '+name); return x; }
+function sh_(name){
+  // A referência única SAP_SNAPSHOT_ATIVO muda base e rodadas simultaneamente.
+  let actual=name;
+  if(name==='BASE_ESTOQUE'||name==='RODADAS'){
+    const raw=prop_('SAP_SNAPSHOT_ATIVO');
+    if(raw){
+      let snapshot;try{snapshot=JSON.parse(raw);}catch(e){throw Error('Referência de versão da base SAP inválida.');}
+      actual=name==='BASE_ESTOQUE'?snapshot.base:snapshot.rodadas;
+      if(!/^[A-Za-z0-9_]{1,100}$/.test(str_(actual)))throw Error('Aba de versão da base SAP inválida.');
+    }
+  }
+  const x=db_().getSheetByName(actual);
+  if(!x)throw Error('Aba do banco de dados ausente: '+actual);
+  return x;
+}
 function table_(name){ const s=sh_(name),last=s.getLastRow(); if(last<2)return []; const head=SCHEMA[name],values=s.getRange(2,1,last-1,head.length).getValues(); return values.filter(row=>row[0]!==''&&row[0]!==null).map(row=>Object.fromEntries(head.map((h,i)=>[h,row[i]]))); }
 function appendMany_(name,rows){ if(!rows.length)return; const sheet=sh_(name),width=SCHEMA[name].length; for(let i=0;i<rows.length;i+=350){const part=rows.slice(i,i+350),start=sheet.getLastRow()+1,needed=start+part.length-1; if(needed>sheet.getMaxRows())sheet.insertRowsAfter(sheet.getMaxRows(),Math.max(needed-sheet.getMaxRows(),350)); sheet.getRange(start,1,part.length,width).setValues(part);} }
 function iso_(){return new Date().toISOString();}
@@ -147,24 +161,145 @@ function instalarProjeto(){
   Logger.log('INSTALAÇÃO CONCLUÍDA. Banco: '+db.getUrl());
   return {banco_url:db.getUrl(),...imported};
 }
-function importarSAPInterno_(sourceId,source){
-  const values=source.getDataRange().getDisplayValues();if(values.length<2)throw Error('Base SAP vazia.');
+/** Valida a origem SAP e constrói uma nova fotografia, sem alterar a planilha origem. */
+function lerBaseSAP_(source,inventoryId){
+  const values=source.getDataRange().getDisplayValues();
+  if(values.length<2)throw Error('A base SAP de origem está vazia.');
   const names=values.shift().map(s=>norm_(s).normalize('NFD').replace(/[\u0300-\u036f]/g,''));
   const required=['CODIGO PRODUTO','DESCRICAO PRODUTO','UNIDADE DE MEDIDA','CENTRO','DEPOSITO','DESCRICAO DO DEPOSITO','QUANTIDADE','VALOR','MOEDA','ESTOQUE BLOQUEADO','EM TRANSFERENCIA (CENTRO)','TRANSITO E TE'];
   const indices=required.map(x=>{const n=names.indexOf(x);if(n<0)throw Error('Coluna SAP ausente: '+x);return n;});
-  const inventoryId=uuid_(),mapped=new Map();let duplicated=0;
-  for(const row of values){const c=indices.map(i=>str_(row[i]));if(!c[0])continue;const key=normalizeKey_(c[0],c[3],c[4]);
-    const qty=decimal_(c[6]||'0','QUANTIDADE'),valor=decimal_(c[7]||'0','VALOR'),bloq=decimal_(c[9]||'0','ESTOQUE BLOQUEADO'),trans=decimal_(c[10]||'0','EM TRANSFERENCIA'),te=decimal_(c[11]||'0','TRANSITO E TE');
-    if(mapped.has(key)){const prev=mapped.get(key);if(norm_(prev[4])!==norm_(c[2])||norm_(prev[10])!==norm_(c[8]))throw Error('Mesmo SKU+centro+depósito com UM ou moeda diferente: '+key);prev[8]+=qty;prev[9]+=valor;prev[11]+=bloq;prev[12]+=trans;prev[13]+=te;duplicated++;}
-    else mapped.set(key,[inventoryId,key,c[0],c[1],c[2],c[3],c[4],c[5],qty,valor,c[8],bloq,trans,te]);
-  }
-  if(mapped.size===0)throw Error('Nenhum produto importável.');
-  const records=[...mapped.values()];appendMany_('BASE_ESTOQUE',records);
-  appendMany_('INVENTARIOS',[[inventoryId,'Inventário Friovix 1025-1026',iso_(),'ATIVO',sourceId]]);
-  const sectors=[...new Set(records.map(x=>x[5]+'|'+x[6]))].sort();
-  appendMany_('RODADAS',sectors.map(item=>{const [c,d]=item.split('|');return [uuid_(),inventoryId,c,d,1,'ABERTA',iso_(),'',''];}));
-  return {inventario_id:inventoryId,itens:records.length,duplicados:duplicated,setores:sectors.length};
+  const mapped=new Map();let duplicated=0;
+  values.forEach((row,index)=>{
+    const c=indices.map(i=>str_(row[i]));
+    if(!c[0]){if(c.some(x=>x!==''))throw Error('Linha '+(index+2)+' do SAP sem código de produto.');return;}
+    if(!c[3])throw Error('Linha '+(index+2)+' sem centro.');
+    if(!c[2])throw Error('Linha '+(index+2)+' sem unidade de medida.');
+    if(!c[8])throw Error('Linha '+(index+2)+' sem moeda.');
+    const key=normalizeKey_(c[0],c[3],c[4]);
+    const qty=decimal_(c[6]||'0','QUANTIDADE na linha '+(index+2));
+    const valor=decimal_(c[7]||'0','VALOR na linha '+(index+2));
+    const bloq=decimal_(c[9]||'0','ESTOQUE BLOQUEADO');
+    const trans=decimal_(c[10]||'0','EM TRANSFERENCIA');
+    const te=decimal_(c[11]||'0','TRANSITO E TE');
+    if(mapped.has(key)){
+      const prev=mapped.get(key);
+      if(norm_(prev[4])!==norm_(c[2])||norm_(prev[10])!==norm_(c[8]))throw Error('Mesmo código/centro/depósito com UM ou moeda diferente: '+key);
+      prev[8]+=qty;prev[9]+=valor;prev[11]+=bloq;prev[12]+=trans;prev[13]+=te;duplicated++;
+    }else mapped.set(key,[inventoryId,key,c[0],c[1],c[2],c[3],c[4],c[5],qty,valor,c[8],bloq,trans,te]);
+  });
+  if(!mapped.size)throw Error('A origem SAP não contém produtos importáveis.');
+  return {registros:[...mapped.values()].sort((a,b)=>a[1].localeCompare(b[1])),duplicados:duplicated};
 }
+function setoresDaBaseSAP_(registros,inventoryId){
+  const setores=[...new Set(registros.map(x=>str_(x[5])+'|'+str_(x[6])))].sort();
+  return setores.map(item=>{
+    const div=item.indexOf('|'),centro=item.slice(0,div),deposito=item.slice(div+1);
+    return [uuid_(),inventoryId,centro,deposito,1,'ABERTA',iso_(),'',''];
+  });
+}
+function importarSAPInterno_(sourceId,source){
+  const inv=uuid_(),parsed=lerBaseSAP_(source,inv);
+  appendMany_('BASE_ESTOQUE',parsed.registros);
+  appendMany_('INVENTARIOS',[[inv,'Inventário Friovix 1025-1026',iso_(),'ATIVO',sourceId]]);
+  const setores=setoresDaBaseSAP_(parsed.registros,inv);
+  appendMany_('RODADAS',setores);
+  return {inventario_id:inv,itens:parsed.registros.length,duplicados:parsed.duplicados,setores:setores.length};
+}
+/** A atualização não pode invalidar contagens já executadas. */
+function bloqueiosAtualizacaoSAP_(){
+  const impedimentos=[];
+  if(modoOperacao_()!==MODO_TESTE)impedimentos.push('A base SAP está congelada no modo OFICIAL.');
+  if(prop_('LIMPEZA_EM_ANDAMENTO')==='SIM')impedimentos.push('Há limpeza de testes interrompida.');
+  for(const nome of ['CONTAGENS','RESULTADOS','APROVACOES'])
+    if(table_(nome).length)impedimentos.push('Há registros na aba '+nome+'. Use Limpar registros de teste antes de sincronizar.');
+  if(table_('RODADAS').some(r=>Number(r.numero)!==1||str_(r.status)!=='ABERTA'||str_(r.encerrada_em)!==''))
+    impedimentos.push('Há rodadas encerradas/reabertas ou posteriores à primeira. Limpe os testes antes de sincronizar.');
+  return impedimentos;
+}
+function resumoDiferencasSAP_(anteriores,proximos){
+  const keys=SCHEMA.BASE_ESTOQUE;
+  const oldMap=new Map(anteriores.map(x=>[str_(x.chave),x]));
+  const novoMap=new Map(proximos.map(row=>[str_(row[1]),Object.fromEntries(keys.map((k,i)=>[k,row[i]]))]));
+  let novos=0,removidos=0,alterados=0,saldos=0,descricoes=0,unidades=0;
+  const exemplos=[];
+  for(const [key,novo] of novoMap){
+    const antigo=oldMap.get(key);
+    if(!antigo){novos++;if(exemplos.length<8)exemplos.push({chave:key,tipo:'NOVO'});continue;}
+    if(keys.slice(2).some(k=>str_(antigo[k])!==str_(novo[k]))){
+      alterados++;
+      if(Number(antigo.quantidade_sap)!==Number(novo.quantidade_sap))saldos++;
+      if(str_(antigo.descricao)!==str_(novo.descricao))descricoes++;
+      if(str_(antigo.um)!==str_(novo.um))unidades++;
+      if(exemplos.length<8)exemplos.push({chave:key,tipo:'ALTERADO'});
+    }
+  }
+  for(const key of oldMap.keys())if(!novoMap.has(key)){
+    removidos++;if(exemplos.length<8)exemplos.push({chave:key,tipo:'REMOVIDO'});
+  }
+  return {anteriores:anteriores.length,atuais:proximos.length,novos,removidos,alterados,saldos,descricoes,unidades,exemplos,
+    setores:[...new Set(proximos.map(r=>str_(r[5])+'|'+str_(r[6])))].length,
+    ha_alteracoes:Boolean(novos||removidos||alterados)};
+}
+function prepararAtualizacaoSAP_(){
+  const inv=activeInventory_(),sourceId=prop_('SAP_SOURCE_ID');
+  if(!sourceId||str_(inv.fonte_id)!==sourceId)throw Error('A origem SAP cadastrada diverge da origem do inventário.');
+  const source=SpreadsheetApp.openById(sourceId).getSheetByName('Data');
+  if(!source)throw Error('A aba Data não existe na planilha SAP de origem.');
+  const dados=lerBaseSAP_(source,inv.inventario_id),anteriores=table_('BASE_ESTOQUE');
+  const resumo=resumoDiferencasSAP_(anteriores,dados.registros);
+  const assinatura=sha_(JSON.stringify({inv:inv.inventario_id,
+    old:anteriores.map(r=>SCHEMA.BASE_ESTOQUE.map(k=>str_(r[k]))).sort((a,b)=>a[1].localeCompare(b[1])),
+    novo:dados.registros}));
+  return {inv,dados,resumo,assinatura};
+}
+function previsualizarAtualizacaoSAP(d){
+  const u=auth_(d.token);requireAdmin_(u);exigirSemLimpeza_();
+  const preparado=prepararAtualizacaoSAP_(),impedimentos=bloqueiosAtualizacaoSAP_();
+  return {...preparado.resumo,assinatura:preparado.assinatura,impedimentos,
+    pode_atualizar:impedimentos.length===0&&preparado.resumo.ha_alteracoes};
+}
+function gravarSnapshotSAP_(nome,cabecalhos,registros){
+  const db=db_(),sheet=db.insertSheet(nome);
+  sheet.getRange(1,1,1,cabecalhos.length).setValues([cabecalhos]);
+  sheet.setFrozenRows(1);
+  sheet.getRange(1,1,1,cabecalhos.length).setBackground('#edf1f5').setFontWeight('bold');
+  for(let i=0;i<registros.length;i+=350){
+    const part=registros.slice(i,i+350),start=i+2,needed=start+part.length-1;
+    if(needed>sheet.getMaxRows())sheet.insertRowsAfter(sheet.getMaxRows(),needed-sheet.getMaxRows());
+    sheet.getRange(start,1,part.length,cabecalhos.length).setValues(part);
+  }
+  if(sheet.getLastRow()!==registros.length+1)throw Error('A nova aba de estoque foi gravada incompletamente.');
+  return sheet;
+}
+function atualizarBaseSAP(d){return withLock_(()=>{
+  const u=auth_(d.token);requireAdmin_(u);exigirSemLimpeza_();
+  const impedimentos=bloqueiosAtualizacaoSAP_();
+  if(impedimentos.length)throw Error(impedimentos.join(' '));
+  if(str_(d.confirmacao)!=='ATUALIZAR BASE SAP')throw Error('Confirmação inválida. Digite ATUALIZAR BASE SAP.');
+  const preparado=prepararAtualizacaoSAP_();
+  if(!preparado.resumo.ha_alteracoes)throw Error('A base SAP já está atualizada.');
+  if(str_(d.assinatura)!==preparado.assinatura)throw Error('A planilha SAP ou a base atual mudou após a prévia. Faça uma nova pré-visualização.');
+  const suf=new Date().toISOString().replace(/[-:TZ.]/g,'').slice(0,14)+'_'+uuid_().slice(0,6);
+  const nomeBase='BASE_SAP_'+suf,nomeRodadas='RODADAS_SAP_'+suf;
+  const novasRodadas=setoresDaBaseSAP_(preparado.dados.registros,preparado.inv.inventario_id);
+  // As duas abas são preenchidas e verificadas antes da troca da referência ativa.
+  gravarSnapshotSAP_(nomeBase,SCHEMA.BASE_ESTOQUE,preparado.dados.registros);
+  gravarSnapshotSAP_(nomeRodadas,SCHEMA.RODADAS,novasRodadas);
+  const novaVersao={base:nomeBase,rodadas:nomeRodadas,quando:iso_()};
+  const antiga=prop_('SAP_SNAPSHOT_ATIVO');
+  props_().setProperty('SAP_SNAPSHOT_ATIVO',JSON.stringify(novaVersao));
+  try{
+    writeAudit_(u.usuario,'BASE_SAP_ATUALIZADA','INVENTARIO',preparado.inv.inventario_id,
+      {antes:preparado.resumo.anteriores,depois:preparado.resumo.atuais,novos:preparado.resumo.novos,
+       removidos:preparado.resumo.removidos,alterados:preparado.resumo.alterados,
+       setores:novasRodadas.length,origem:prop_('SAP_SOURCE_ID'),versao:nomeBase});
+  }catch(err){
+    if(antiga)props_().setProperty('SAP_SNAPSHOT_ATIVO',antiga);
+    else props_().deleteProperty('SAP_SNAPSHOT_ATIVO');
+    throw Error('Falha ao registrar auditoria; a versão anterior permaneceu ativa: '+err.message);
+  }
+  return {ok:true,...preparado.resumo,versao:nomeBase,quando:novaVersao.quando};
+});}
 
 /** Apenas identificação do transporte (não revela informações SAP). */
 function ping(){return {ok:true,servico:'Inventário Friovix',versao:'2.0'};}
