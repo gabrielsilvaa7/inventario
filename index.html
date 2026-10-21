@@ -5,31 +5,30 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#152339">
   <meta name="robots" content="noindex,nofollow">
-  <title>Inventário SAP | Controle Físico</title>
+  <title>Inventário Friovix | Controle Físico</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <iframe id="scriptBridge" title="Canal protegido do backend" class="bridge" referrerpolicy="no-referrer" aria-hidden="true"></iframe>
   <div id="toast" role="alert" aria-live="polite" class="toast" hidden></div>
   <section id="connecting" class="auth-page">
-    <div class="auth-card"><div class="brand-icon">▦</div><h1>Inventário SAP</h1><p id="connectingMessage">Conectando ao serviço de inventário...</p></div>
+    <div class="auth-card"><div class="brand-icon">▦</div><h1>Inventário Friovix</h1><p id="connectingMessage">Conectando ao serviço de inventário...</p></div>
   </section>
   <section id="loginPage" class="auth-page" hidden>
     <div class="auth-card">
       <div class="brand-icon">▦</div><div class="eyebrow">CONTROLE DE ESTOQUE</div>
-      <h1>Inventário SAP</h1><p>Entre com as credenciais fornecidas pelo supervisor.</p>
+      <h1>Inventário Friovix</h1><p>Entre com as credenciais fornecidas pelo supervisor.</p>
       <form id="loginForm" class="stack">
         <label>Usuário<input name="usuario" id="loginUser" placeholder="Ex.: JOAO.SILVA" autocomplete="username" required minlength="3"></label>
         <label>Senha<input name="senha" id="loginPass" type="password" placeholder="Sua senha" autocomplete="current-password" required></label>
         <button class="btn primary full" type="submit" id="loginButton">Entrar no sistema</button>
       </form>
-      <p class="hint">O saldo SAP e os resultados de divergências são acessíveis somente a supervisores autorizados.</p>
     </div>
   </section>
   <main id="appPage" hidden>
     <header class="topbar">
       <div class="header-wrap">
-        <div class="brand"><span class="brand-mark">▦</span><div><strong>Inventário SAP</strong><small id="inventoryName">Inventário físico</small></div></div>
+        <div class="brand"><span class="brand-mark">▦</span><div><strong>Inventário Friovix</strong><small id="inventoryName">Inventário físico</small></div></div>
         <div class="header-actions"><span id="modeBadge" class="mode-badge" aria-live="polite">Modo: —</span><span id="accountLabel" class="account"></span><button id="logoutButton" class="btn outline small" type="button">Sair</button></div>
       </div>
     </header>
@@ -48,7 +47,12 @@
             <h3>Identificação</h3>
             <form id="searchForm" class="stack">
               <label>Centro e depósito<select id="sectorSelect" required><option value="">Selecione um setor...</option></select></label>
-              <label>Código do produto<div class="input-action"><input id="productCode" placeholder="Digite o código SAP" autocomplete="off" inputmode="numeric" required><button type="submit" class="btn secondary">Buscar</button></div></label>
+              <label for="productCode">Código ou descrição do produto</label>
+              <div class="product-lookup">
+                <div class="input-action"><input id="productCode" placeholder="Digite pelo menos 2 caracteres" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="productSuggestions" required><button type="submit" class="btn secondary">Buscar</button></div>
+                <div id="productSuggestions" class="suggestions" role="listbox" hidden></div>
+              </div>
+              <p class="hint">A pesquisa mostra apenas materiais do centro e depósito selecionados que podem ser contados na rodada atual.</p>
             </form>
             <div id="productInfo" class="product-card muted">Selecione o setor e procure um material para iniciar a contagem.</div>
           </article>
@@ -73,6 +77,24 @@
       <section class="page" id="tab-painel">
         <div class="heading inline"><div><div class="eyebrow">INDICADORES</div><h2>Dashboard de inventário</h2><p>Contagens e localização de materiais por endereço físico.</p></div><button class="btn secondary" id="refreshDashboard" type="button">Atualizar</button></div>
         <div class="stats" id="stats"></div>
+        <article class="panel progress-panel">
+          <div class="panel-head"><div><h3>Acompanhamento de produtos</h3><p>Resultado consolidado após o encerramento de cada rodada, com progresso por centro e depósito.</p></div></div>
+          <div class="followup-filters">
+            <label>Centro<select id="dashboardCenter"><option value="">Carregando...</option></select></label>
+            <label>Depósito<select id="dashboardDepot"><option value="">Carregando...</option></select></label>
+            <label>Localizar produto<input type="search" id="dashboardQuery" placeholder="Código ou descrição" autocomplete="off"></label>
+            <button class="btn secondary" type="button" id="searchFollowup">Filtrar produtos</button>
+          </div>
+          <div class="progress-overview" id="progressOverview" aria-live="polite"></div>
+          <div class="round-legend" aria-label="Legenda das contagens">
+            <span><i class="round-dot passed"></i> Estoque conferido</span>
+            <span><i class="round-dot warning"></i> Segunda contagem</span>
+            <span><i class="round-dot failed"></i> Divergência / próxima rodada</span>
+            <span><i class="round-dot active"></i> Em contagem</span>
+          </div>
+          <div class="table-wrap"><table class="followup-table"><thead><tr><th>Código</th><th>Descrição do produto</th><th>Centro</th><th>Depósito</th><th>1ª contagem</th><th>2ª contagem</th><th>3ª contagem</th><th>Situação final</th></tr></thead><tbody id="followupBody"><tr><td colspan="8" class="empty">Aguardando dados...</td></tr></tbody></table></div>
+          <div class="followup-pagination"><span id="followupCount" class="tiny"></span><div><button type="button" class="btn secondary small" id="followupPrev" disabled>Anterior</button><span id="followupPage" class="tiny">Página 1</span><button type="button" class="btn secondary small" id="followupNext" disabled>Próxima</button></div></div>
+        </article>
         <article class="panel">
           <div class="panel-head"><div><h3>Localizador de materiais</h3><p>Mostra a última rodada registrada de cada material, sem somar rodadas diferentes.</p></div></div>
           <form id="filterForm" class="filter-grid">
@@ -95,7 +117,6 @@
         <article class="panel"><h3>Status por centro e depósito</h3><div class="table-wrap"><table><thead><tr><th>Centro</th><th>Depósito</th><th>Rodada</th><th>Status</th><th>Contados</th><th>Faltantes</th><th>Ação</th></tr></thead><tbody id="sectorsBody"></tbody></table></div></article>
         <article class="panel"><h3>Divergências aguardando aprovação</h3><p class="hint">As divergências finais só aparecem após o encerramento da terceira rodada. A aprovação não realiza lançamento contábil no SAP.</p><div class="table-wrap"><table><thead><tr><th>Código</th><th>Centro</th><th>Depósito</th><th>SAP</th><th>Físico</th><th>Diferença</th><th>Ação</th></tr></thead><tbody id="approvalsBody"></tbody></table></div></article>
         <article class="panel"><div class="panel-head"><h3>Configurações operacionais</h3></div><label class="switch-row"><input type="checkbox" id="allowSameCounter"><span>Permitir que o mesmo contador realize rodadas posteriores do mesmo material</span></label><button type="button" id="saveSettings" class="btn secondary">Salvar configuração</button></article>
-        <article class="panel"><h3>Últimos eventos de auditoria</h3><div class="table-wrap"><table><thead><tr><th>Data e hora</th><th>Usuário</th><th>Operação</th><th>Referência</th></tr></thead><tbody id="auditBody"></tbody></table></div></article>
       </section>
 
       <section class="page" id="tab-usuarios">
@@ -117,7 +138,6 @@
           <article class="panel"><h3>Equipe autorizada</h3><div id="userList" class="people-list"></div></article>
         </div>
       </section>
-      <footer>Inventário SAP · GitHub Pages + Google Apps Script · Modo de operação controlado pelo administrador</footer>
     </div>
   </main>
   <script src="config.js"></script><script src="app.js"></script>
