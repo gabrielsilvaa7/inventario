@@ -59,10 +59,43 @@ const token=env.entrar({usuario:'admin',senha:'senha-inicial-supersegura'}).toke
 assert.equal(env.sessaoAtual({token}).usuario.perfil,'ADMIN');
 assert.equal(env.estadoAmbiente({token}).modo,'TESTE');
 assert.equal(props.get('INVENTARIO_MODO'),'TESTE');
+
+// Integração: prévia, atualização versionada e preservação da fonte SAP.
+const sapSheet=source.getSheetByName('Data');
+const originalRows=sapSheet.rows.map(row=>row.slice());
+const preview0=env.previsualizarAtualizacaoSAP({token});
+assert.equal(preview0.ha_alteracoes,false);
+sapSheet.rows=sapSheet.rows.filter(row=>row[0]!=='3000');
+sapSheet.rows.find(row=>row[0]==='1000'&&row[4]==='1')[6]='13';
+sapSheet.rows.push(['4000','Produto Novo','UN','1025','16','Entrada','9','90,00','BRL','0','0','0']);
+const previewSAP=env.previsualizarAtualizacaoSAP({token});
+assert.equal(previewSAP.novos,1);
+assert.equal(previewSAP.removidos,1);
+assert.equal(previewSAP.alterados,1);
+assert.equal(previewSAP.pode_atualizar,true);
+assert.equal(env.table_('BASE_ESTOQUE').find(x=>x.codigo==='1000'&&x.deposito==='1').quantidade_sap,10);
+fail(()=>env.atualizarBaseSAP({token,assinatura:'inválida',confirmacao:'ATUALIZAR BASE SAP'}),/prévia/);
+const import1=env.atualizarBaseSAP({token,assinatura:previewSAP.assinatura,confirmacao:'ATUALIZAR BASE SAP'});
+assert.equal(import1.ok,true);
+assert.equal(env.table_('RODADAS').length,3);
+assert.equal(env.table_('BASE_ESTOQUE').find(x=>x.codigo==='1000'&&x.deposito==='1').quantidade_sap,13);
+assert(env.table_('BASE_ESTOQUE').some(x=>x.codigo==='4000'));
+assert.equal(sheets.get(props.get('DB_SPREADSHEET_ID')).getSheetByName('BASE_ESTOQUE').getLastRow(),5,'snapshot original preservado');
+assert.equal(env.previsualizarAtualizacaoSAP({token}).ha_alteracoes,false);
+sapSheet.rows=originalRows.map(row=>row.slice());
+const previewRetorno=env.previsualizarAtualizacaoSAP({token});
+env.atualizarBaseSAP({token,assinatura:previewRetorno.assinatura,confirmacao:'ATUALIZAR BASE SAP'});
+assert.equal(env.table_('RODADAS').length,2);
+assert.equal(env.table_('BASE_ESTOQUE').length,4);
+assert.equal(env.table_('BASE_ESTOQUE').find(x=>x.codigo==='1000'&&x.deposito==='1').quantidade_sap,10);
+assert.equal(env.table_('AUDITORIA').filter(e=>e.acao==='BASE_SAP_ATUALIZADA').length,2);
+
 fail(()=>env.estadoAmbiente({token:'token-invalido'}),/Sessão/);
 for(const u of ['CONTA','CONTB','CONTC'])env.cadastrarUsuario({token,usuario:{usuario:u,nome:'Contador '+u,senha:'senhafortedez123',perfil:'CONTADOR'}});
 const login=u=>env.entrar({usuario:u,senha:'senhafortedez123'}).token;
 const a=login('CONTA'),b=login('CONTB'),c=login('CONTC');
+fail(()=>env.previsualizarAtualizacaoSAP({token:a}),/administrador/);
+fail(()=>env.atualizarBaseSAP({token:a,confirmacao:'ATUALIZAR BASE SAP'}),/administrador/);
 const count=(t,code,qty,location={},depot='1',req)=>env.salvarContagem({token:t,centro:'1025',deposito:depot,codigo:code,quantidade:qty,rua:location.rua??'',zona:location.zona??'',posicao:location.posicao??'',palete:location.palete??'',request_id:req||crypto.randomUUID()});
 // Carregamento único do catálogo para busca local: somente SKUs permitidos por setor/usuário.
 fail(()=>env.catalogoProdutos({token:'invalido',centro:'1025',deposito:'1'}),/Sessão/);
@@ -93,6 +126,8 @@ fail(()=>count(a,'1000','1',{rua:0,zona:1,posicao:1,palete:1}),/inteiro/);
 const l1={rua:3,zona:2,posicao:15,palete:4},l2={rua:4,zona:2,posicao:8,palete:1};
 const uuid=crypto.randomUUID();count(a,'1000',8,l1,'1',uuid);assert.equal(count(a,'1000',8,l1,'1',uuid).duplicado,true);
 count(a,'1000',1,l2);count(a,'2000','1,250',l1);
+assert.equal(env.previsualizarAtualizacaoSAP({token}).pode_atualizar,false);
+fail(()=>env.atualizarBaseSAP({token,assinatura:'errado',confirmacao:'ATUALIZAR BASE SAP'}),/CONTAGENS/);
 const duringFirst=env.painel({token,acompanhamento:{centro:'1025',deposito:'1',pagina:1,termo:'1000'}}).acompanhamento;
 assert.equal(duringFirst.contados,2);
 assert.equal(duringFirst.progresso,67);
@@ -156,7 +191,7 @@ assert.equal(env.sugerirProdutos({token:b,centro:'1025',deposito:'1',termo:'1000
 assert.equal(env.encerrarRodada({token,rodada_id:second.rodada_id}).divergentes,1);
 // Retomada de execução parcialmente interrompida: alguns resultados já foram invalidados.
 const testDb=sheets.get(props.get('DB_SPREADSHEET_ID'));
-const roundsTable=testDb.getSheetByName('RODADAS');
+const roundsTable=env.sh_('RODADAS');
 const resultsTable=testDb.getSheetByName('RESULTADOS');
 const roundTwoRow=roundsTable.rows.findIndex(x=>x[0]===second.rodada_id);
 const secondResultRow=resultsTable.rows.findIndex(x=>x[2]===second.rodada_id);
@@ -249,6 +284,8 @@ fail(()=>env.iniciarInventarioOficial({token,confirmacao:'CONFIRMO'}),/Confirma�
 const official=env.iniciarInventarioOficial({token,confirmacao:'INICIAR INVENTARIO OFICIAL'});
 assert.equal(official.modo,'OFICIAL');assert.equal(props.get('INVENTARIO_MODO'),'OFICIAL');
 assert.equal(env.estadoAmbiente({token}).modo,'OFICIAL');
+assert.equal(env.previsualizarAtualizacaoSAP({token}).pode_atualizar,false);
+fail(()=>env.atualizarBaseSAP({token,assinatura:'x',confirmacao:'ATUALIZAR BASE SAP'}),/OFICIAL|congelada/);
 assert.equal(env.carregarContexto({token:a}).modo,'OFICIAL');
 fail(()=>env.limparDadosTeste({token,confirmacao:'APAGAR TESTES'}),/proibida/);
 fail(()=>env.iniciarInventarioOficial({token,confirmacao:'INICIAR INVENTARIO OFICIAL'}),/OFICIAL/);
