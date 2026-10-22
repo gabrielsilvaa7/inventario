@@ -422,22 +422,43 @@ async function exportarRecontagem(numeroRodada,button){
   finally{btnBusy(button,false);renderRecountExports();}
 }
 
-function paintDashboard(data){state.dashboard=data;const k=data.resumo;
-  const stats=[['SKUs da base',k.total_skus],['Com resultado',k.com_resultado],['Conferidos',k.conferidos],['Aprovação pendente',k.pendentes_aprovacao],['Lançamentos',k.total_lancamentos]];
-  $('stats').innerHTML=stats.map(x=>`<div class="stat"><span>${safe(x[0])}</span><strong>${num(x[1])}</strong></div>`).join('');
-  paintGauge(data.progresso_geral);renderRecountExports();
+/** Os cards e o velocímetro SEMPRE recebem exatamente o mesmo escopo do centro/depósito. */
+function paintScopedIndicators(metricas){
+  const m=metricas||{total:0,contados:0,batendo:0,divergentes:0,percentual:0};
+  const cards=[
+    {nome:'Produtos Contados',quantidade:m.contados,classe:'counted',detalhe:'Produtos distintos com lançamento'},
+    {nome:'Produtos Batendo',quantidade:m.batendo,classe:'passed',detalhe:'Conferidos em rodada encerrada'},
+    {nome:'Produtos Divergente',quantidade:m.divergentes,classe:'failed',detalhe:'Divergentes após a 3ª contagem'}
+  ];
+  $('stats').innerHTML=cards.map(c=>`<div class="stat stat-${c.classe}"><span>${safe(c.nome)}</span><strong>${num(c.quantidade)}</strong><small>${safe(c.detalhe)}</small></div>`).join('');
+  paintGauge(m);
+}
+function sectorRecommendation(round){
+  if(round.status==='REABRINDO')return {classe:'active',texto:'Reabertura em andamento',nota:'Aguardando conclusão'};
+  if(round.status!=='ENCERRADA')return {classe:'active',texto:'Em contagem',nota:'Finalize todos os produtos da rodada'};
+  const divergentes=Number(round.divergentes_na_rodada)||0;
+  if(divergentes===0)return {classe:'passed',texto:'Estoque Batendo',nota:'Nenhuma divergência nesta rodada'};
+  if(Number(round.numero)===1)return {classe:'warning',texto:'Segunda Contagem',nota:num(divergentes)+' produtos para recontagem'};
+  if(Number(round.numero)===2)return {classe:'warning',texto:'Terceira Contagem',nota:num(divergentes)+' produtos para recontagem'};
+  return {classe:'failed',texto:'Estoque Divergente',nota:num(divergentes)+' produtos com divergência final'};
+}
+function paintDashboard(data){state.dashboard=data;
+  paintScopedIndicators(data.metricas);renderRecountExports();
   $('locationCount').textContent=`${num(data.total_enderecos_filtrados)} endereços encontrados. Exibindo até 400 resultados; refine os filtros se necessário.`;
-  $('locationsBody').innerHTML=data.enderecos.length?data.enderecos.map(x=>`<tr><td><strong>${safe(x.codigo)}</strong></td><td>${safe(x.descricao)}</td><td>${safe(x.centro)}</td><td>${safe(x.deposito)}</td><td>${safe(x.rua)}</td><td>${safe(x.zona)}</td><td>${safe(x.posicao)}</td><td>${safe(x.palete)}</td><td>${num(x.quantidade)}</td><td>${safe(x.rodada)}</td></tr>`).join(''):'<tr><td colspan="10" class="empty">Nenhum material encontrado nos filtros escolhidos.</td></tr>';
+  $('locationsBody').innerHTML=data.enderecos.length?data.enderecos.map(x=>`<tr><td><strong>${safe(x.codigo)}</strong></td><td class="locator-description">${safe(x.descricao)}</td><td class="locator-quantity-cell"><strong class="locator-quantity-value">${num(x.quantidade)}</strong></td><td>${safe(x.centro)}</td><td>${safe(x.deposito)}</td><td>${safe(x.rua)}</td><td>${safe(x.zona)}</td><td>${safe(x.posicao)}</td><td>${safe(x.palete)}</td><td>${safe(x.rodada)}</td></tr>`).join(''):'<tr><td colspan="10" class="empty">Nenhum material encontrado nos filtros escolhidos.</td></tr>';
   $('sectorsBody').innerHTML=data.setores.length?data.setores.map(r=>{
-    const percent=r.total_alvo?Math.round(100*r.produtos_registrados/r.total_alvo):100;
+    const percent=r.total_alvo?Math.round(100*r.produtos_registrados/r.total_alvo):0;
+    const indicador=sectorRecommendation(r),hasDifferences=Number(r.divergentes_na_rodada)>0;
     const action=r.status==='ABERTA'
       ?`<button class="btn secondary action-small" data-close="${safe(r.rodada_id)}">Encerrar</button>`
       :r.status==='REABRINDO'
       ?`<button class="btn secondary action-small" data-reopen="${safe(r.rodada_id)}">Retomar reabertura</button>`
       :r.status==='ENCERRADA'
-      ?`<div class="round-actions">${r.numero<3?`<button class="btn secondary action-small" data-open="${safe(r.centro)}|${safe(r.deposito)}">Próxima rodada</button>`:''}${r.pode_reabrir?`<button class="btn outline-reopen action-small" data-reopen="${safe(r.rodada_id)}" title="Reabrir para completar a contagem, mantendo histórico">Reabrir</button>`:''}${r.numero===3&&!r.pode_reabrir?'<span class="tiny">Aprovação registrada</span>':''}</div>`:'—';
-    return `<tr><td>${safe(r.centro)}</td><td>${safe(r.deposito)}</td><td>${safe(r.numero)}</td><td><span class="tag ${r.status==='ABERTA'?'warn':'end'}">${safe(r.status)}</span></td><td>${num(r.produtos_registrados)} / ${num(r.total_alvo)} (${percent}%)</td><td>${num(r.faltando_total)}${r.faltando_total?'<div class="tiny">Ex.: '+safe(r.produtos_faltando.slice(0,3).join(', '))+'</div>':''}</td><td>${action}</td></tr>`;
-  }).join(''):'<tr><td colspan="7" class="empty">Nenhum setor disponível.</td></tr>';
+      ?`<div class="round-actions">${r.numero<3&&hasDifferences?`<button class="btn secondary action-small" data-open="${safe(r.centro)}|${safe(r.deposito)}">Próxima rodada</button>`:''}${r.pode_reabrir?`<button class="btn outline-reopen action-small" data-reopen="${safe(r.rodada_id)}" title="Reabrir a contagem mantendo o histórico">Reabrir</button>`:''}${!r.pode_reabrir&&(!hasDifferences||r.numero===3)?'<span class="tiny">Concluído</span>':''}</div>`:'—';
+    const progress=`<div class="sector-progress" role="progressbar" aria-label="Progresso da ${num(r.numero)}ª contagem" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><div class="sector-progress-top"><strong>${percent}%</strong><span>${num(r.produtos_registrados)} de ${num(r.total_alvo)} produtos</span></div><div class="sector-progress-track"><div class="sector-progress-fill ${percent===100?'complete':''}" style="width:${percent}%"></div></div></div>`;
+    const recommendation=`<div class="sector-recommendation ${indicador.classe}"><span class="sector-recommendation-dot" aria-hidden="true"></span><div><strong>${safe(indicador.texto)}</strong><small>${safe(indicador.nota)}</small></div></div>`;
+    return `<tr><td><strong>${safe(r.centro)}</strong></td><td>${safe(r.deposito)}</td><td>${safe(r.numero)}ª</td><td><span class="tag ${r.status==='ABERTA'?'warn':'end'}">${safe(r.status)}</span></td><td>${progress}</td><td>${num(r.faltando_total)}${r.faltando_total?'<div class="tiny">Ex.: '+safe(r.produtos_faltando.slice(0,3).join(', '))+'</div>':''}</td><td>${recommendation}</td><td>${action}</td></tr>`;
+  }).join(''):'<tr><td colspan="8" class="empty">Nenhum setor disponível.</td></tr>';
   $('approvalsBody').innerHTML=data.divergencias.length?data.divergencias.map(x=>`<tr><td>${safe(x.codigo)}</td><td>${safe(x.centro)}</td><td>${safe(x.deposito)}</td><td>${num(x.quantidade_sap)}</td><td>${num(x.quantidade_contada)}</td><td>${num(x.diferenca)}</td><td><button class="btn secondary action-small" data-approve="${safe(x.resultado_id)}">Aprovar</button></td></tr>`).join(''):'<tr><td colspan="7" class="empty">Nenhuma divergência aguardando aprovação.</td></tr>';
 
   paintFollowup(data.acompanhamento);
@@ -451,6 +472,8 @@ function followupLoading(active){
   $('followupNext').disabled=active||!state.dashboard?.acompanhamento||state.dashboard.acompanhamento.pagina>=state.dashboard.acompanhamento.total_paginas;
   $('progressOverview').setAttribute('aria-busy',String(active));
   $('followupBody').setAttribute('aria-busy',String(active));
+  $('stats').setAttribute('aria-busy',String(active));
+  document.querySelector('.gauge-panel').setAttribute('aria-busy',String(active));
 }
 async function refreshFollowup(){
   if(!canSupervise())return;
@@ -461,7 +484,11 @@ async function refreshFollowup(){
   try{
     const data=await api('filtrarAcompanhamento',{acompanhamento:followupOptions()});
     if(seq!==state.followupSeq)return;
-    state.dashboard.acompanhamento=data;paintFollowup(data);
+    state.dashboard.acompanhamento=data;
+    // A mesma resposta leve atualiza indicadores e velocímetro do setor escolhido.
+    paintScopedIndicators(data.metricas);
+    state.dashboard.metricas=data.metricas;
+    paintFollowup(data);
   }catch(err){
     if(seq!==state.followupSeq)return;
     if(/M[eé]todo n[aã]o permitido|is not a function|Fun[cç][aã]o n[aã]o encontrada/i.test(err.message)){

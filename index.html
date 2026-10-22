@@ -77,12 +77,21 @@
       <section class="page" id="tab-painel">
         <div class="heading inline"><div><div class="eyebrow">INDICADORES</div><h2>Dashboard de inventário</h2><p>Contagens e localização de materiais por endereço físico.</p></div><div class="dashboard-actions"><span id="dashboardUpdatedAt" class="tiny" aria-live="polite">Aguardando primeira atualização</span><button class="btn secondary" id="refreshDashboard" type="button">Atualizar</button></div></div>
         <div id="dashboardStatus" class="operation-status" role="status" aria-live="polite" hidden><span class="mini-spinner" aria-hidden="true"></span><span id="dashboardStatusText">Atualizando informações do inventário…</span></div>
+        <article class="panel dashboard-scope-panel">
+          <div class="dashboard-scope-title"><strong>Filtros do inventário</strong><span>Centro e depósito selecionados determinam os cards, o velocímetro e o acompanhamento. A pesquisa por produto filtra apenas a lista.</span></div>
+          <div class="followup-filters">
+            <label>Centro<select id="dashboardCenter"><option value="">Carregando...</option></select></label>
+            <label>Depósito<select id="dashboardDepot"><option value="">Carregando...</option></select></label>
+            <label>Localizar produto<input type="search" id="dashboardQuery" placeholder="Código ou descrição" autocomplete="off"></label>
+            <button class="btn secondary" type="button" id="searchFollowup">Filtrar produtos</button>
+          </div>
+        </article>
         <div class="stats" id="stats"></div>
         <article class="panel gauge-panel" aria-label="Evolução global da contagem por produto">
           <div class="gauge-intro">
-            <div class="eyebrow">EVOLUÇÃO GERAL DO INVENTÁRIO</div>
-            <h3>Produtos contados da base SAP</h3>
-            <p>Cada Código + Centro + Depósito conta como um produto. Uma contagem de quantidade zero também conta como registrada; não é preciso encerrar a rodada para avançar.</p>
+            <div class="eyebrow">EVOLUÇÃO DO SETOR SELECIONADO</div>
+            <h3>Produtos contados no centro e depósito</h3>
+            <p>Percentual de códigos registrados no centro/depósito escolhido, não de unidades. Lançamentos com quantidade zero também contam; várias contagens do mesmo produto não duplicam o progresso.</p>
           </div>
           <div class="gauge-visual" aria-live="polite">
             <svg viewBox="0 0 240 138" class="gauge-svg" aria-hidden="true">
@@ -99,12 +108,7 @@
         </article>
         <article class="panel progress-panel">
           <div class="panel-head"><div><h3>Acompanhamento de produtos</h3><p>Resultado consolidado após o encerramento de cada rodada, com progresso por centro e depósito.</p></div></div>
-          <div class="followup-filters">
-            <label>Centro<select id="dashboardCenter"><option value="">Carregando...</option></select></label>
-            <label>Depósito<select id="dashboardDepot"><option value="">Carregando...</option></select></label>
-            <label>Localizar produto<input type="search" id="dashboardQuery" placeholder="Código ou descrição" autocomplete="off"></label>
-            <button class="btn secondary" type="button" id="searchFollowup">Filtrar produtos</button>
-          </div>
+
           <div id="recountExportPanel" class="recount-export-panel" hidden>
             <div class="recount-export-copy"><strong>Listas de recontagem</strong><span id="recountExportHint">Disponíveis depois que a rodada anterior for encerrada com divergências. As listas não incluem o saldo SAP.</span></div>
             <div class="recount-export-buttons">
@@ -137,13 +141,13 @@
           </form>
           <div id="locatorLoading" class="operation-status secondary-status" role="status" aria-live="polite" hidden><span class="mini-spinner" aria-hidden="true"></span><span>Filtrando endereços físicos…</span></div>
           <div id="locationCount" class="tiny counter"></div>
-          <div class="table-wrap"><table><thead><tr><th>Código</th><th>Descrição</th><th>Centro</th><th>Depósito</th><th>Rua</th><th>Zona</th><th>Posição</th><th>Palete</th><th>Qtd.</th><th>Rod.</th></tr></thead><tbody id="locationsBody"><tr><td colspan="10" class="empty">Carregando...</td></tr></tbody></table></div>
+          <div class="table-wrap"><table class="locator-table"><thead><tr><th>Código</th><th>Descrição</th><th class="locator-quantity-head">Quantidade</th><th>Centro</th><th>Depósito</th><th>Rua</th><th>Zona</th><th>Posição</th><th>Palete</th><th>Rod.</th></tr></thead><tbody id="locationsBody"><tr><td colspan="10" class="empty">Carregando...</td></tr></tbody></table></div>
         </article>
       </section>
 
       <section class="page" id="tab-supervisao">
         <div class="heading"><div><div class="eyebrow">GESTÃO DE RODADAS</div><h2>Supervisão</h2><p>O encerramento exige contagem de todos os itens-alvo. Uma rodada encerrada por engano pode ser reaberta mediante justificativa, desde que não exista rodada posterior nem aprovação de divergência.</p></div></div>
-        <article class="panel"><h3>Status por centro e depósito</h3><div class="table-wrap"><table><thead><tr><th>Centro</th><th>Depósito</th><th>Rodada</th><th>Status</th><th>Contados</th><th>Faltantes</th><th>Ação</th></tr></thead><tbody id="sectorsBody"></tbody></table></div></article>
+        <article class="panel"><div class="panel-head"><div><h3>Status por centro e depósito</h3><p class="hint">A evolução considera produtos distintos da rodada atual. Após o encerramento, o sistema indica a próxima etapa ou o resultado.</p></div></div><div class="table-wrap"><table class="sector-table"><thead><tr><th>Centro</th><th>Depósito</th><th>Rodada</th><th>Status</th><th>Progresso da contagem</th><th>Faltantes</th><th>Próxima etapa / Resultado</th><th>Ação</th></tr></thead><tbody id="sectorsBody"></tbody></table></div></article>
         <article class="panel"><h3>Divergências aguardando aprovação</h3><p class="hint">As divergências finais só aparecem após o encerramento da terceira rodada. A aprovação não realiza lançamento contábil no SAP.</p><div class="table-wrap"><table><thead><tr><th>Código</th><th>Centro</th><th>Depósito</th><th>SAP</th><th>Físico</th><th>Diferença</th><th>Ação</th></tr></thead><tbody id="approvalsBody"></tbody></table></div></article>
         <article class="panel" id="counterPermissionsPanel">
           <div class="panel-head"><div><h3>Configurações operacionais</h3><p class="hint">Libere individualmente quais contadores podem contar novamente o mesmo material em rodadas posteriores. A regra padrão é exigir outro contador.</p></div><button type="button" id="refreshCounterPermissions" class="btn secondary small">Atualizar lista</button></div>

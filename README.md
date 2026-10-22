@@ -1,5 +1,17 @@
 # Inventário Friovix — GitHub Pages + Google Apps Script
 
+## Dashboard filtrado e Supervisão visual (v9)
+
+- **Filtro por centro/depósito:** agora controla conjuntamente os três cards, o velocímetro e a tabela de acompanhamento. Os filtros foram movidos para o topo do Dashboard para indicar o escopo. A pesquisa por código/descrição afeta somente a listagem de produtos, não os totais do setor.
+- **Produtos Contados:** quantidade de produtos distintos (Código + Centro + Depósito) com pelo menos um lançamento, mesmo quando a quantidade é zero; não é uma contagem de unidades e não depende de fechar a rodada.
+- **Produtos Batendo (verde):** produtos cuja quantidade física foi confirmada igual ao SAP após o fechamento de qualquer rodada.
+- **Produtos Divergente (vermelho):** apenas produtos com divergência de estoque após o encerramento da terceira rodada. Aprovações posteriores não alteram essa classificação física.
+- **Supervisão:** a evolução da rodada aparece com porcentagem numérica, barra de progresso e total de materiais contados/alvo. A nova coluna **Próxima etapa / Resultado** sinaliza Estoque Batendo (verde), Segunda Contagem (amarelo), Terceira Contagem (amarelo) ou Estoque Divergente (vermelho), conforme o encerramento. Rodadas abertas indicam Em contagem.
+- **Localizador de materiais:** coluna Quantidade física imediatamente após Descrição, maior contraste, números destacados e melhor leitura em telas estreitas.
+- **Desempenho:** a consulta rápida `filtrarAcompanhamento` devolve também as métricas daquele depósito, mantendo cards e velocímetro sincronizados sem recalcular o dashboard inteiro a cada filtro.
+
+**Ativação no sistema existente:** publique os novos `apps-script/Code.gs` e `apps-script/Bridge.html` (a ponte não mudou nesta versão, mas deve permanecer compatível). Salve e faça **Implantar → Gerenciar implantações → Editar → Nova versão → Implantar**. Não execute `instalarProjeto` novamente.
+
 ## Atualização de interface e supervisão (v8)
 
 - **Velocímetro:** arco superior segmentado em três faixas coloridas (0–35% vermelho, 35–65% amarelo, 65–100% verde). O preenchimento segue exclusivamente da esquerda para a direita; o ponteiro acompanha a porcentagem de SKUs distintos contados.

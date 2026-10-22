@@ -181,3 +181,55 @@
   .round-dialog-actions .btn{width:100%}
 }
 @media(prefers-reduced-motion:reduce){.round-action-dialog[open]{animation:none}}
+
+
+/* Dashboard filtrado por centro/depósito — três cards e velocímetro coerentes. */
+.dashboard-scope-panel{padding:17px 22px 4px;border-color:#d7e2ed}
+.dashboard-scope-title{display:flex;align-items:center;justify-content:space-between;gap:15px}
+.dashboard-scope-title strong{color:var(--navy);font-size:.93rem}
+.dashboard-scope-title span{font-size:.77rem;color:var(--muted);line-height:1.45}
+.dashboard-scope-panel .followup-filters{margin:14px 0 16px}
+.stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+.stat{border-left:4px solid #3c82ba;min-width:0}
+.stat small{display:block;color:var(--muted);font-size:.74rem;margin-top:5px;line-height:1.35}
+.stat.stat-passed{border-left-color:#21835a;background:linear-gradient(120deg,#ffffff,#f2faf6)}
+.stat.stat-passed strong{color:#146a43}
+.stat.stat-failed{border-left-color:#bf4b40;background:linear-gradient(120deg,#ffffff,#fff5f3)}
+.stat.stat-failed strong{color:#ae372f}
+.stat.stat-counted strong{color:#203c5b}
+#stats[aria-busy="true"],.gauge-panel[aria-busy="true"]{opacity:.55;transition:opacity .18s}
+
+/* Destaque da quantidade física junto da descrição no localizador. */
+.locator-table{min-width:860px}
+.locator-table .locator-description{min-width:170px;max-width:380px;white-space:normal;line-height:1.45}
+.locator-quantity-head{background:#e9eef6;color:#183653;text-align:center;min-width:120px}
+.locator-quantity-cell{background:#f1f5fa;text-align:center;min-width:120px}
+.locator-table tbody tr:hover .locator-quantity-cell{background:#e7eff8}
+.locator-quantity-value{display:inline-block;min-width:60px;padding:8px 13px;border-radius:9px;background:#dbe8f8;border:1px solid #bed1e9;color:#193d65;font-size:1.16rem;font-weight:850;font-variant-numeric:tabular-nums}
+
+/* Supervisão: progresso em destaque e orientação de próxima etapa. */
+.sector-table{min-width:1040px}
+.sector-table td{vertical-align:middle}
+.sector-table td:nth-child(5){min-width:212px}
+.sector-table td:nth-child(7){min-width:205px}
+.sector-progress{display:grid;gap:8px;min-width:180px}
+.sector-progress-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.sector-progress-top strong{font-size:1.27rem;color:var(--navy);font-weight:850;font-variant-numeric:tabular-nums}
+.sector-progress-top span{font-size:.72rem;color:var(--muted);white-space:nowrap}
+.sector-progress-track{height:11px;background:#e2eaf2;border-radius:999px;overflow:hidden}
+.sector-progress-fill{height:100%;width:0;border-radius:999px;background:linear-gradient(90deg,#518ac0,#3c75ab);transition:width .35s ease}
+.sector-progress-fill.complete{background:linear-gradient(90deg,#33986d,#18734c)}
+.sector-recommendation{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid #dce7f2;border-radius:11px;background:#f1f6fc}
+.sector-recommendation-dot{height:10px;width:10px;border-radius:50%;background:#387eb6;flex-shrink:0;margin-top:5px}
+.sector-recommendation>div{display:grid;gap:4px}
+.sector-recommendation strong{font-size:.8rem;font-weight:850;white-space:nowrap}
+.sector-recommendation small{font-size:.72rem;color:#586b81;line-height:1.4}
+.sector-recommendation.passed{background:#e7f6ee;border-color:#c0e6d1;color:#166f47}
+.sector-recommendation.passed .sector-recommendation-dot{background:#18905b}
+.sector-recommendation.warning{background:#fff6df;border-color:#f2dcab;color:#98600d}
+.sector-recommendation.warning .sector-recommendation-dot{background:#d9a125}
+.sector-recommendation.failed{background:#fdeceb;border-color:#efc4c0;color:#af3630}
+.sector-recommendation.failed .sector-recommendation-dot{background:#c8433b}
+@media(max-width:900px){.dashboard-scope-title{align-items:flex-start;flex-direction:column;gap:6px}.sector-table{min-width:1000px}}
+@media(max-width:600px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.stats .stat:last-child{grid-column:span 2}.dashboard-scope-panel{padding:15px 15px 1px}}
+@media(prefers-reduced-motion:reduce){.sector-progress-fill{transition:none}}
