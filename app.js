@@ -442,6 +442,59 @@ function sectorRecommendation(round){
   if(Number(round.numero)===2)return {classe:'warning',texto:'Terceira Contagem',nota:num(divergentes)+' produtos para recontagem'};
   return {classe:'failed',texto:'Estoque Divergente',nota:num(divergentes)+' produtos com divergência final'};
 }
+
+/** CSV UTF-8 para Excel, mantendo valores numéricos e protegendo textos que parecem fórmulas. */
+function salvarCsvSeguro_(filename,headers,rows,numericColumns){
+  const numbers=new Set(numericColumns||[]);
+  const enc=(value,index)=>{
+    if(numbers.has(index)){
+      const n=Number(value);
+      if(!Number.isFinite(n))throw Error('Número inválido no relatório: '+value);
+      return String(n).replace('.',',');
+    }
+    return csvCell(value);
+  };
+  const csv='\uFEFF'+[headers,...rows].map((row,i)=>row.map((v,j)=>i?enc(v,j):csvCell(v)).join(';')).join('\r\n')+'\r\n';
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob),link=document.createElement('a');
+  link.href=url;link.download=filename;document.body.appendChild(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),3000);
+}
+async function exportarRelatorioInventario(tipo,centro,deposito,numero,button){
+  if(!canSupervise())return;
+  btnBusy(button,true,'Gerando relatório…');
+  try{
+    const data=await api('exportarRelatorioInventario',{tipo,centro,deposito,numero},180000);
+    if(!Array.isArray(data.itens)||!data.itens.length)throw Error('O relatório não possui produtos.');
+    const headers=['Nome de quem contou','Código','Descrição','Centro','Depósito','Rodada',
+      'Quantidade encontrada','Quantidade SAP','Diferença','Situação'];
+    const rows=data.itens.map(x=>[x.contador,x.codigo,x.descricao,x.centro,x.deposito,x.rodada,
+      x.quantidade_encontrada,x.quantidade_sap,x.diferenca,x.situacao]);
+    const key=x=>String(x).replace(/[^A-Za-z0-9_-]/g,'_')||'SEM_DEP';
+    const stamp=new Date().toISOString().slice(0,10).replace(/-/g,'');
+    const label=tipo==='FINAL'?'FINAL':'RODADA_'+Number(numero);
+    const name='FRIOVIX_INVENTARIO_'+label+'_C'+key(centro)+'_D'+key(deposito)+'_'+stamp+'.csv';
+    salvarCsvSeguro_(name,headers,rows,[5,6,7,8]);
+    toast('Relatório '+(tipo==='FINAL'?'final':'da '+numero+'ª rodada')+' gerado com '+num(data.itens.length)+' produtos.','success');
+  }catch(err){toast('Relatório de inventário: '+err.message,'error');}
+  finally{btnBusy(button,false);}
+}
+async function exportarLocalizacoes(button){
+  if(!canSupervise())return;
+  btnBusy(button,true,'Extraindo endereços…');
+  try{
+    const response=await api('exportarLocalizador',{filtro:getFilter()},180000);
+    if(!Array.isArray(response.itens)||!response.itens.length)throw Error('Nenhuma localização disponível.');
+    const headers=['Código','Descrição','Unidade','Centro','Depósito','Rua','Zona','Posição','Palete','Quantidade','Rodada'];
+    const rows=response.itens.map(x=>[x.codigo,x.descricao,x.um,x.centro,x.deposito,x.rua,
+      x.zona,x.posicao,x.palete,x.quantidade,x.rodada]);
+    const stamp=new Date().toISOString().slice(0,10).replace(/-/g,'');
+    salvarCsvSeguro_('FRIOVIX_LOCALIZADOR_'+stamp+'.csv',headers,rows,[9,10]);
+    toast('Localizações exportadas: '+num(response.itens.length)+' endereços conforme os filtros.','success');
+  }catch(err){toast('Exportação do localizador: '+err.message,'error');}
+  finally{btnBusy(button,false);}
+}
+
 function paintDashboard(data){state.dashboard=data;
   paintScopedIndicators(data.metricas);renderRecountExports();
   $('locationCount').textContent=`${num(data.total_enderecos_filtrados)} endereços encontrados. Exibindo até 400 resultados; refine os filtros se necessário.`;
@@ -455,11 +508,21 @@ function paintDashboard(data){state.dashboard=data;
       ?`<button class="btn secondary action-small" data-reopen="${safe(r.rodada_id)}">Retomar reabertura</button>`
       :r.status==='ENCERRADA'
       ?`<div class="round-actions">${r.numero<3&&hasDifferences?`<button class="btn secondary action-small" data-open="${safe(r.centro)}|${safe(r.deposito)}">Próxima rodada</button>`:''}${r.pode_reabrir?`<button class="btn outline-reopen action-small" data-reopen="${safe(r.rodada_id)}" title="Reabrir a contagem mantendo o histórico">Reabrir</button>`:''}${!r.pode_reabrir&&(!hasDifferences||r.numero===3)?'<span class="tiny">Concluído</span>':''}</div>`:'—';
+
+    const reportRounds=Array.isArray(r.relatorios_rodadas)?r.relatorios_rodadas:[];
+    const reportOptions=reportRounds.map(z=>'<option value="'+Number(z.numero)+'">'+Number(z.numero)+'ª contagem</option>').join('');
+    const reportList=reportRounds.length
+      ?'<div class="report-round-action"><select class="report-round-select" aria-label="Selecione a rodada encerrada">'+reportOptions+'</select>'
+       +'<button type="button" class="btn secondary action-small" data-report-kind="RODADA" data-report-center="'+safe(r.centro)+'" data-report-depot="'+safe(r.deposito)+'" title="Exporta apenas os itens desta rodada">Exportar rodada</button></div>'
+      :'<span class="tiny">Aguarde o encerramento</span>';
+    const reportFinal=r.relatorio_final_disponivel
+      ?'<button type="button" class="btn report-final-btn action-small" data-report-kind="FINAL" data-report-center="'+safe(r.centro)+'" data-report-depot="'+safe(r.deposito)+'" title="Inclui o último resultado de todos os produtos deste setor">Exportar relatório final</button>'
+      :'';
+    const reports='<div class="sector-reports">'+reportList+reportFinal+'</div>';
     const progress=`<div class="sector-progress" role="progressbar" aria-label="Progresso da ${num(r.numero)}ª contagem" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><div class="sector-progress-top"><strong>${percent}%</strong><span>${num(r.produtos_registrados)} de ${num(r.total_alvo)} produtos</span></div><div class="sector-progress-track"><div class="sector-progress-fill ${percent===100?'complete':''}" style="width:${percent}%"></div></div></div>`;
     const recommendation=`<div class="sector-recommendation ${indicador.classe}"><span class="sector-recommendation-dot" aria-hidden="true"></span><div><strong>${safe(indicador.texto)}</strong><small>${safe(indicador.nota)}</small></div></div>`;
-    return `<tr><td><strong>${safe(r.centro)}</strong></td><td>${safe(r.deposito)}</td><td>${safe(r.numero)}ª</td><td><span class="tag ${r.status==='ABERTA'?'warn':'end'}">${safe(r.status)}</span></td><td>${progress}</td><td>${num(r.faltando_total)}${r.faltando_total?'<div class="tiny">Ex.: '+safe(r.produtos_faltando.slice(0,3).join(', '))+'</div>':''}</td><td>${recommendation}</td><td>${action}</td></tr>`;
-  }).join(''):'<tr><td colspan="8" class="empty">Nenhum setor disponível.</td></tr>';
-  $('approvalsBody').innerHTML=data.divergencias.length?data.divergencias.map(x=>`<tr><td>${safe(x.codigo)}</td><td>${safe(x.centro)}</td><td>${safe(x.deposito)}</td><td>${num(x.quantidade_sap)}</td><td>${num(x.quantidade_contada)}</td><td>${num(x.diferenca)}</td><td><button class="btn secondary action-small" data-approve="${safe(x.resultado_id)}">Aprovar</button></td></tr>`).join(''):'<tr><td colspan="7" class="empty">Nenhuma divergência aguardando aprovação.</td></tr>';
+    return `<tr><td><strong>${safe(r.centro)}</strong></td><td>${safe(r.deposito)}</td><td>${safe(r.numero)}ª</td><td><span class="tag ${r.status==='ABERTA'?'warn':'end'}">${safe(r.status)}</span></td><td>${progress}</td><td>${num(r.faltando_total)}${r.faltando_total?'<div class="tiny">Ex.: '+safe(r.produtos_faltando.slice(0,3).join(', '))+'</div>':''}</td><td>${recommendation}</td><td>${reports}</td><td>${action}</td></tr>`;
+  }).join(''):'<tr><td colspan="9" class="empty">Nenhum setor disponível.</td></tr>';
 
   paintFollowup(data.acompanhamento);
 }
@@ -599,8 +662,6 @@ async function confirmRoundAction(){
 function doClose(roundId){showRoundDialog('close',roundId);}
 function doReopen(roundId){showRoundDialog('reopen',roundId);}
 function doOpen(value){showRoundDialog('open',value);}
-async function doApprove(resultId){const reason=prompt('Justificativa de aprovação da divergência final (mínimo de 8 caracteres):');if(reason===null)return;
-  try{await api('aprovarDivergencia',{resultado_id:resultId,motivo:reason});toast('Divergência aprovada. Não foi lançada no SAP.','success');await refreshDashboard();}catch(err){toast(err.message,'error');}}
 async function refreshUsers(){if(state.usuario?.perfil!=='ADMIN')return;try{const users=await api('listarUsuarios');$('userList').innerHTML=users.map(u=>`<div class="person"><div><strong>${safe(u.nome)}</strong><small>${safe(u.usuario)}</small></div><span class="tag ${u.ativo==='SIM'?'ok':'warn'}">${safe(u.perfil)}</span></div>`).join('');}catch(err){toast(err.message,'error');}}
 async function doCreateUser(event){event.preventDefault();const button=$('userForm').querySelector('button');btnBusy(button,true,'Salvando...');try{
   const usuario={usuario:$('newUsername').value.trim(),nome:$('newName').value.trim(),perfil:$('newRole').value,senha:$('newPassword').value};await api('cadastrarUsuario',{usuario});
@@ -664,8 +725,20 @@ $('productCode').addEventListener('keydown',suggestionsKeydown);
 $('productCode').addEventListener('focus',()=>{if($('productCode').value.trim().length>=2)queueSuggestions();});
 $('productSuggestions').addEventListener('pointerdown',e=>{const b=e.target.closest('[data-suggest-code]');if(!b)return;e.preventDefault();pickSuggestion(b.dataset.suggestCode);});
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('.product-lookup'))hideSuggestions();});
-$('sectorsBody').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.close)doClose(b.dataset.close);if(b.dataset.open)doOpen(b.dataset.open);if(b.dataset.reopen)doReopen(b.dataset.reopen,b);});
-$('approvalsBody').addEventListener('click',e=>{const b=e.target.closest('button');if(b?.dataset.approve)doApprove(b.dataset.approve);});
+$('sectorsBody').addEventListener('click',e=>{
+  const b=e.target.closest('button');
+  if(!b)return;
+  if(b.dataset.reportKind){
+    const {reportKind:tipo,reportCenter:centro,reportDepot:deposito}=b.dataset;
+    const numero=tipo==='RODADA'?Number(b.closest('tr')?.querySelector('.report-round-select')?.value):undefined;
+    exportarRelatorioInventario(tipo,centro,deposito,numero,b);
+    return;
+  }
+  if(b.dataset.close)doClose(b.dataset.close);
+  if(b.dataset.open)doOpen(b.dataset.open);
+  if(b.dataset.reopen)doReopen(b.dataset.reopen,b);
+});
+$('exportLocator').addEventListener('click',e=>exportarLocalizacoes(e.currentTarget));
 $('userForm').addEventListener('submit',doCreateUser);
 $('refreshCounterPermissions').addEventListener('click',refreshCounterPermissions);
 $('counterPermissionSearch').addEventListener('input',renderCounterPermissions);

@@ -11,10 +11,10 @@ const METHODS = new Set([
   'ping','entrar','sair','sessaoAtual','carregarContexto','consultarProduto','sugerirProdutos',
   'catalogoProdutos','filtrarAcompanhamento',
   'salvarContagem','painel','encerrarRodada','reabrirRodada','abrirProximaRodada',
-  'aprovarDivergencia','listarUsuarios','cadastrarUsuario','atualizarConfiguracao',
+  'listarUsuarios','cadastrarUsuario','atualizarConfiguracao',
   'estadoAmbiente','limparDadosTeste','iniciarInventarioOficial',
   'previsualizarAtualizacaoSAP','atualizarBaseSAP','exportarListaRecontagem',
-  'listarPermissoesContadores','definirPermissaoContador'
+  'listarPermissoesContadores','definirPermissaoContador','exportarRelatorioInventario','exportarLocalizador'
 ]);
 function reply(payload){window.top.postMessage({app:'inventario-sap',channel:CHANNEL,...payload},ALLOWED_ORIGIN);}
 window.addEventListener('message',event=>{

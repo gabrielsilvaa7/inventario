@@ -1,11 +1,31 @@
 # Inventário Friovix — GitHub Pages + Google Apps Script
 
+## Relatórios de inventário e exportação do Localizador (v10)
+
+A etapa **Divergências aguardando aprovação** foi eliminada. As diferenças de 3ª rodada recebem status **DIVERGENTE_FINAL**, sem aprovação obrigatória e **sem atualização automática do SAP**. A aba histórica `APROVACOES` permanece intacta para não apagar dados anteriores, mas nenhuma nova aprovação é registrada.
+
+Na **Supervisão**, a coluna **Relatórios de inventário** oferece:
+- **Exportar rodada:** selecione uma rodada **encerrada** (1ª, 2ª ou 3ª) para um CSV contendo apenas os produtos contados nela.
+- **Exportar relatório final:** aparece quando o centro/depósito estiver finalizado: após uma rodada 1 ou 2 encerrada **sem diferenças**, ou após a 3ª encerrada, **mesmo com diferenças**. Esse arquivo reúne **todos os produtos** do setor, com o resultado válido da **última rodada daquele SKU**. Assim, produtos já conferidos na 1ª aparecem junto aos recontados na 2ª/3ª, sem somar rodadas.
+- As colunas do CSV incluem **nome(s) dos contadores**, código, descrição, centro, depósito, rodada efetiva do produto, quantidade física consolidada, quantidade SAP, diferença física − SAP e situação.
+- Se um produto recebeu lançamentos parciais de vários contadores na mesma rodada, todos os responsáveis aparecem no campo de nomes, uma vez cada. Quantidade **zero** também aparece no relatório.
+- Em caso de **reabertura**, os resultados anteriores deixam de ser considerados e a rodada reaberta só volta a ser exportável depois do novo encerramento. Exportações e reaberturas entram na auditoria.
+- Apenas perfis **SUPERVISOR** e **ADMIN** podem baixar os arquivos.
+
+No Dashboard, o botão **Exportar localizações · CSV** dentro de **Localizador de materiais** exporta todos os endereços que atendam aos filtros **Código / Centro / Depósito / Rua / Zona / Posição / Palete**, inclusive quando a tabela exibir no máximo 400 registros. O arquivo inclui código, descrição, UM, centro, depósito, endereço físico, quantidade e rodada da última contagem daquele material. Contagens com quantidade zero não criam endereço físico. Por proteção contra arquivos enormes, acima de **20.000 endereços filtrados**, refine os filtros em vez de receber um arquivo incompleto.
+
+Os arquivos são **CSV UTF-8 com BOM e separador ponto e vírgula**, compatíveis com Excel em português, com números positivos/negativos preservados e proteção contra conteúdo interpretado como fórmula. **Para preservar códigos SAP com zeros iniciais**, importe pelo menu **Dados → De Texto/CSV** do Excel e defina a coluna Código como **Texto**. Os relatórios não alteram a planilha SAP nem os lançamentos.
+
+**Ativação:** substitua `apps-script/Code.gs` e `apps-script/Bridge.html` no projeto Apps Script existente, salve e **Implantar → Gerenciar implantações → Editar → Nova versão → Implantar**. A interface do GitHub Pages é atualizada pelo commit. **Não execute `instalarProjeto` novamente.**
+
+
+
 ## Dashboard filtrado e Supervisão visual (v9)
 
 - **Filtro por centro/depósito:** agora controla conjuntamente os três cards, o velocímetro e a tabela de acompanhamento. Os filtros foram movidos para o topo do Dashboard para indicar o escopo. A pesquisa por código/descrição afeta somente a listagem de produtos, não os totais do setor.
 - **Produtos Contados:** quantidade de produtos distintos (Código + Centro + Depósito) com pelo menos um lançamento, mesmo quando a quantidade é zero; não é uma contagem de unidades e não depende de fechar a rodada.
 - **Produtos Batendo (verde):** produtos cuja quantidade física foi confirmada igual ao SAP após o fechamento de qualquer rodada.
-- **Produtos Divergente (vermelho):** apenas produtos com divergência de estoque após o encerramento da terceira rodada. Aprovações posteriores não alteram essa classificação física.
+- **Produtos Divergente (vermelho):** apenas produtos com divergência de estoque após o encerramento da terceira rodada. A classificação do estoque continua baseada nas diferenças físicas da última rodada encerrada.
 - **Supervisão:** a evolução da rodada aparece com porcentagem numérica, barra de progresso e total de materiais contados/alvo. A nova coluna **Próxima etapa / Resultado** sinaliza Estoque Batendo (verde), Segunda Contagem (amarelo), Terceira Contagem (amarelo) ou Estoque Divergente (vermelho), conforme o encerramento. Rodadas abertas indicam Em contagem.
 - **Localizador de materiais:** coluna Quantidade física imediatamente após Descrição, maior contraste, números destacados e melhor leitura em telas estreitas.
 - **Desempenho:** a consulta rápida `filtrarAcompanhamento` devolve também as métricas daquele depósito, mantendo cards e velocímetro sincronizados sem recalcular o dashboard inteiro a cada filtro.
@@ -34,14 +54,14 @@ Na aba **Supervisão**, o supervisor ou administrador pode clicar em **Reabrir**
 - Os lançamentos da rodada, incluindo endereço, quantidade e usuário, permanecem na aba `CONTAGENS`.
 - Os resultados do fechamento anterior são mantidos na aba `RESULTADOS` com status `REABERTO`, como histórico, e deixam de participar dos cálculos/dashboards.
 - Ao encerrar novamente, o sistema gera nova consolidação e novos identificadores de resultados; a reabertura é registrada em `AUDITORIA`.
-- Se uma rodada posterior já foi iniciada ou se houve aprovação de divergência, **não é possível reabrir**.
+- Se uma rodada posterior já foi iniciada, **não é possível reabrir** a rodada anterior.
 - Se a operação interromper com status `REABRINDO`, clique em **Retomar reabertura**. Essa proteção também é válida no modo OFICIAL.
 
 **Para ativar no Apps Script existente:** substitua `Code.gs` e `Bridge.html` e selecione **Implantar → Gerenciar implantações → Editar → Nova versão → Implantar**. Não execute `instalarProjeto` novamente. A planilha de dados não precisa ser recriada.
 
 ## Atualização — velocímetro e exportação de recontagens (v7)
 
-O **Dashboard** agora apresenta um velocímetro de progresso global com a porcentagem de **produtos (Código + Centro + Depósito) que receberam ao menos um lançamento**, mesmo que a quantidade lançada seja zero. Repetir registros parciais do mesmo produto não aumenta o numerador. A métrica considera todos os centros e depósitos da base ativa e não exige que o supervisor já tenha encerrado a rodada. Os indicadores de produtos **concluídos** continuam separados.
+O **Dashboard** apresenta um velocímetro de progresso de produtos com a porcentagem de **produtos (Código + Centro + Depósito) que receberam ao menos um lançamento**, mesmo que a quantidade lançada seja zero. Repetir registros parciais do mesmo produto não aumenta o numerador. A métrica considera o centro e depósito selecionados na versão atual e não exige que o supervisor já tenha encerrado a rodada. Os indicadores de produtos **concluídos** continuam separados.
 
 No painel **Acompanhamento de produtos**, após selecionar o centro e depósito:
 
@@ -65,8 +85,8 @@ No painel **Acompanhamento de produtos**, após selecionar o centro e depósito:
 - Até três rodadas. Rodada 2 e 3 recebem **somente materiais que divergiram na rodada anterior**. Produto que confere com SAP fica finalizado.
 - Por padrão, o mesmo usuário não conta o mesmo produto em rodadas diferentes; supervisor pode liberar a exceção.
 - Consolidação de endereços na última rodada registrada do material, sem misturar rodadas.
-- Divergências após a terceira rodada precisam de aprovação do supervisor, sem lançamento automático no SAP.
-- Log de auditoria: login, tentativa malsucedida, lançamento, encerramento/abertura, aprovação, criação de usuário, mudança de configuração.
+- Divergências após a terceira rodada são consideradas resultados físicos finais, sem aprovação obrigatória e sem lançamento automático no SAP. O supervisor pode exportar o relatório final.
+- Log de auditoria: login, tentativa malsucedida, lançamento, encerramento/abertura, exportações, criação de usuário e mudança de configuração.
 - Dashboard com **lista paginada de 50 produtos** por centro e depósito, código, descrição, estados da 1ª/2ª/3ª contagem (verde, amarelo, vermelho), situação **Estoque Batendo / Estoque Divergente** e progresso de produtos iniciados/concluídos.
 - Autocomplete na tela de contagem por **código ou descrição**, restrito ao centro/depósito e à rodada atual (máximo 12 sugestões).
 - Filtro de localização por endereço físico. A aba AUDITORIA fica acessível somente na planilha privada, não na interface.
@@ -86,7 +106,7 @@ No menu **Administração**, use **Verificar alterações** para comparar a plan
 A evolução é calculada **por centro + depósito**, com:
 - **Contagem iniciada:** total de SKUs que receberam pelo menos um lançamento em qualquer rodada / total de SKUs da base.
 - **Contagem concluída:** SKUs conferidos em alguma rodada encerrada ou divergentes após a terceira rodada encerrada / total de SKUs da base.
-- Verde quando uma rodada encerrada confere com o SAP; amarelo quando a 1ª rodada não confere; vermelho quando a 2ª ou 3ª rodada não confere. Lançamentos ainda não encerrados ficam azuis, sem antecipar resultado.
+- Verde quando a rodada encerrada confere com o SAP; amarelo nas divergências da 1ª e da 2ª; vermelho apenas quando a 3ª rodada encerra divergente. Lançamentos ainda não encerrados ficam azuis, sem antecipar resultado.
 - O estado **Estoque Divergente** só ocorre ao finalizar a terceira rodada com diferença. Na primeira e na segunda, indica-se a próxima rodada necessária.
 
 Apenas o frontend no GitHub não basta para essas novas funções: é obrigatório atualizar e reimplantar o Apps Script.
@@ -95,7 +115,7 @@ Apenas o frontend no GitHub não basta para essas novas funções: é obrigatór
 
 No menu **Administração** (perfil **ADMIN**), existem as opções **Modo TESTE** e **Modo OFICIAL**, além do botão **Apagar registros de teste**.
 
-- **TESTE (inicial):** simule contagens, localizações, rodadas 1/2/3 e aprovações livremente. O administrador pode usar a limpeza após confirmar digitando `APAGAR TESTES`.
+- **TESTE (inicial):** simule contagens, localizações, rodadas 1/2/3 e geração de relatórios. O administrador pode usar a limpeza após confirmar digitando `APAGAR TESTES`.
 - **Limpeza:** elimina os dados simulados em `CONTAGENS`, `RESULTADOS`, `APROVACOES` e `RODADAS`, restabelece a Rodada 1 de cada Centro + Depósito e limpa a auditoria dos testes, guardando um evento da limpeza. Preserva `BASE_ESTOQUE`, `INVENTARIOS`, `USUARIOS`, `SESSOES` e `CONFIG`. Não modifica a planilha SAP original.
 - **OFICIAL (permanente):** exige base de operações limpa e confirmação `INICIAR INVENTARIO OFICIAL`. Depois disso, o backend rejeita todas as tentativas de limpeza e **não permite voltar a TESTE**. As contagens e rodadas oficiais continuam funcionando normalmente.
 - **Permissões:** apenas ADMIN consulta o controle de ambiente, ativa OFICIAL ou apaga dados de TESTE. O modo está nas Propriedades privadas do Apps Script, não no JavaScript do site.
@@ -189,8 +209,8 @@ Se aparecer **Configuração pendente**, isso é esperado até concluir a implan
 - Para testar encerramento, o supervisor precisa garantir lançamento para **cada SKU alvo** do centro/depósito. Se faltar algum, o sistema recusa o encerramento e mostra exemplos de códigos pendentes.
 - Ao encerrar, os SKUs com quantidade física igual à quantidade SAP são finalizados. Os divergentes ficam elegíveis para a rodada seguinte.
 - Depois de `Rodada 1 ENCERRADA`, clique em **Próxima rodada**. Use um contador diferente por SKU, a menos que o supervisor tenha alterado a configuração.
-- Depois da terceira rodada, se o saldo continuar diferente do SAP, surgirá uma pendência de aprovação no painel de supervisão.
-- A aprovação apenas gera um registro em `APROVACOES`; a regularização SAP é atividade externa autorizada.
+- Quando a 1ª ou a 2ª rodada encerrar sem divergências, ou quando a 3ª rodada encerrar mesmo divergente, utilize **Exportar relatório final** na Supervisão.
+- A regularização de diferenças no SAP é uma atividade externa autorizada; exportar não altera o saldo.
 
 ## Observações importantes
 
@@ -203,7 +223,7 @@ Se aparecer **Configuração pendente**, isso é esperado até concluir a implan
 - A planilha de origem não é modificada; a importação acontece uma vez na instalação. Para novo inventário, será necessária funcionalidade adicional de abertura de campanha; não sobrescreva o banco existente.
 - Campos de localização são inteiros positivos a partir de 1; quantidade zero pode omitir endereço, pois representa material não localizado.
 - `UN`, `UND`, `PC`, `PÇ`, `PCS`, `EA`, `CX`, `KIT` são configurados como unidades inteiras no backend; demais UMs aceitam até três casas decimais. Valide esse mapa com as unidades da sua operação.
-- Dashboard lista no máximo 400 endereços filtrados por consulta e até 150 divergências para evitar transferir grandes tabelas ao navegador.
+- Dashboard exibe até 400 endereços por consulta para manter agilidade; o botão de exportação usa todos os endereços filtrados, sem truncamento silencioso.
 
 ## Se não funcionar
 

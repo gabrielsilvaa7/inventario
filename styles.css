@@ -233,3 +233,27 @@
 @media(max-width:900px){.dashboard-scope-title{align-items:flex-start;flex-direction:column;gap:6px}.sector-table{min-width:1000px}}
 @media(max-width:600px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.stats .stat:last-child{grid-column:span 2}.dashboard-scope-panel{padding:15px 15px 1px}}
 @media(prefers-reduced-motion:reduce){.sector-progress-fill{transition:none}}
+
+
+/* Relatórios auditáveis por rodada/final e exportação integral do Localizador. */
+.sector-table{min-width:1320px}
+.sector-table td:nth-child(8){min-width:236px;white-space:normal}
+.sector-reports{display:grid;align-items:start;gap:9px;min-width:215px}
+.report-round-action{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.report-round-select{font-size:.79rem;border-radius:8px;padding:7px 9px;min-width:105px;width:auto;border:1px solid #cfdbe8;background:#fff;color:var(--navy);font-weight:650}
+.report-round-action .btn{white-space:nowrap}
+.report-final-btn{background:#dff3e9;color:#12663f;border:1px solid #b5dec8;font-weight:820;white-space:normal;text-align:center}
+.report-final-btn:hover:not(:disabled){background:#cae9d9}
+.report-guide{background:#f7faff;border-color:#dce8f6}
+.report-guide h3{margin-bottom:7px}
+.report-guide .hint{font-size:.84rem;line-height:1.55}
+.locator-panel-head{align-items:flex-start;flex-wrap:wrap}
+.locator-export-button{white-space:nowrap;flex-shrink:0}
+@media(max-width:850px){
+  .sector-table{min-width:1180px}
+  .sector-reports{min-width:190px}
+  .locator-panel-head{align-items:stretch}
+}
+@media(max-width:520px){
+  .locator-export-button{width:100%;white-space:normal}
+}
