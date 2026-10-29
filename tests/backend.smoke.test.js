@@ -20,7 +20,7 @@ class Sheet {
     setValue(value){return this.setValues([[value]]);},
     clearContent(){for(let i=0;i<n;i++){const at=row-1+i;for(let j=0;j<m;j++)if(self.rows[at])self.rows[at][col-1+j]='';}while(self.rows.length>0&&self.rows[self.rows.length-1].every(x=>x===''||x===undefined))self.rows.pop();return this;},
     getValues(){return Array.from({length:n},(_,i)=>Array.from({length:m},(_,j)=>self.rows[row-1+i]?.[col-1+j]??''));},
-    setBackground(){return this;},setFontWeight(){return this;}
+    setBackground(){return this;},setFontWeight(){return this;},setNumberFormat(){return this;}
   };}
 }
 class Spreadsheet {
@@ -91,12 +91,24 @@ assert.equal(env.table_('BASE_ESTOQUE').find(x=>x.codigo==='1000'&&x.deposito===
 assert.equal(env.table_('AUDITORIA').filter(e=>e.acao==='BASE_SAP_ATUALIZADA').length,2);
 
 fail(()=>env.estadoAmbiente({token:'token-invalido'}),/Sessão/);
-for(const u of ['CONTA','CONTB','CONTC'])env.cadastrarUsuario({token,usuario:{usuario:u,nome:'Contador '+u,senha:'senhafortedez123',perfil:'CONTADOR'}});
+for(const u of ['CONTA','CONTB','CONTC'])env.cadastrarUsuario({token,usuario:{usuario:u,nome:'Apontador '+u,senha:'senhafortedez123',perfil:'APONTADOR'}});
+env.sh_('USUARIOS').rows.find(row=>row[1]==='CONTC')[3]='CONTADOR'; // legado sem migração destrutiva
 const login=u=>env.entrar({usuario:u,senha:'senhafortedez123'}).token;
 const a=login('CONTA'),b=login('CONTB'),c=login('CONTC');
+assert.equal(env.sessaoAtual({token:c}).usuario.perfil,'APONTADOR');
+assert.equal(env.entrar({usuario:'CONTC',senha:'senhafortedez123'}).usuario.perfil,'APONTADOR');
+assert.equal(env.listarUsuarios({token}).find(u=>u.usuario==='CONTC').perfil,'APONTADOR');
+assert.equal(env.listarPermissoesContadores({token}).length,3);
+fail(()=>env.cadastrarUsuario({token,usuario:{usuario:'NOVO1',nome:'Teste',senha:'senhafortedez123',perfil:'CONTADOR'}}),/Perfil/);
 fail(()=>env.previsualizarAtualizacaoSAP({token:a}),/administrador/);
 fail(()=>env.atualizarBaseSAP({token:a,confirmacao:'ATUALIZAR BASE SAP'}),/administrador/);
-const count=(t,code,qty,location={},depot='1',req)=>env.salvarContagem({token:t,centro:'1025',deposito:depot,codigo:code,quantidade:qty,rua:location.rua??'',zona:location.zona??'',posicao:location.posicao??'',palete:location.palete??'',request_id:req||crypto.randomUUID()});
+let etiquetaSequencia=0;
+const count=(t,code,qty,location={},depot='1',req,metadata={})=>env.salvarContagem({
+ token:t,centro:'1025',deposito:depot,codigo:code,quantidade:qty,
+ rua:location.rua??'',zona:location.zona??'',posicao:location.posicao??'',palete:location.palete??'',
+ data_contagem:'2026-10-29',primeiro_conferente:'Maria Silva',segundo_conferente:'Pedro Alves',
+ etiqueta:String(++etiquetaSequencia).padStart(6,'0'),...metadata,request_id:req||crypto.randomUUID()
+});
 // Carregamento único do catálogo para busca local: somente SKUs permitidos por setor/usuário.
 fail(()=>env.catalogoProdutos({token:'invalido',centro:'1025',deposito:'1'}),/Sessão/);
 assert.equal(env.catalogoProdutos({token:a,centro:'1025',deposito:'1'}).itens.length,3);
@@ -115,7 +127,7 @@ assert.equal(env.sugerirProdutos({token:a,centro:'1025',deposito:'9',termo:'prod
 assert.equal(env.sugerirProdutos({token:a,centro:'1025',deposito:'1',termo:'a'}).itens.length,0);
 const beforeClose=env.painel({token,acompanhamento:{centro:'1025',deposito:'1'}}).acompanhamento;
 assert.equal(beforeClose.total,3);
-assert.equal(env.painel({token}).progresso_geral.total,3);
+assert.equal(env.painel({token}).progresso_geral.total,4);
 assert.equal(env.painel({token,acompanhamento:{centro:'1025',deposito:'9'}}).metricas.total,1);
 assert.equal(env.filtrarAcompanhamento({token,acompanhamento:{centro:'1025',deposito:'9'}}).metricas.total,1);
 assert.equal(env.painel({token}).progresso_geral.contados,0);
@@ -131,10 +143,27 @@ fail(()=>count(a,'9999',1,{rua:1,zona:1,posicao:1,palete:1}),/ausente/);
 fail(()=>count(a,'1000','1,5',{rua:1,zona:1,posicao:1,palete:1}),/casa/);
 fail(()=>count(a,'1000','1',{rua:0,zona:1,posicao:1,palete:1}),/inteiro/);
 const l1={rua:3,zona:2,posicao:15,palete:4},l2={rua:4,zona:2,posicao:8,palete:1};
+const sheetContagens=env.sh_('CONTAGENS');sheetContagens.rows[0]=sheetContagens.rows[0].slice(0,14); // banco antigo
+fail(()=>count(a,'1000',8,l1,'1',undefined,{etiqueta:'ABC'}),/Etiqueta/);
+fail(()=>count(a,'1000',8,l1,'1',undefined,{data_contagem:'2026-02-30'}),/Data/);
+fail(()=>count(a,'1000',8,l1,'1',undefined,{primeiro_conferente:'X'}),/Conferente/);
+fail(()=>count(a,'1000',8,l1,'1',undefined,{segundo_conferente:'Maria Silva'}),/distintos/);
 const uuid=crypto.randomUUID();count(a,'1000',8,l1,'1',uuid);assert.equal(count(a,'1000',8,l1,'1',uuid).duplicado,true);
+assert.equal(sheetContagens.rows[0].length,18,'Novas colunas adicionadas sem reinstalar');
+assert.equal(sheetContagens.rows[0][17],'etiqueta');
+assert(/^0{1,5}\d{1,5}$/.test(env.table_('CONTAGENS')[0].etiqueta),'Zeros à esquerda preservados');
+const etiquetaOriginal=env.table_('CONTAGENS')[0].etiqueta;
+fail(()=>count(a,'1000',1,l2,'1',undefined,{etiqueta:etiquetaOriginal}),/já lançada/);
+fail(()=>count(a,'2000',1,l1,'1',undefined,{etiqueta:etiquetaOriginal}),/outro produto/);
 count(a,'1000',1,l2);count(a,'2000','1,250',l1);
+assert.equal(env.painel({token}).metricas.etiquetas,3);
+assert.equal(env.filtrarAcompanhamento({token,acompanhamento:{centro:'1025',deposito:''}}).metricas.total,4);
+assert.equal(env.painel({token,acompanhamento:{centro:'1025',deposito:''}}).metricas.total,4);
+assert.equal(env.painel({token,acompanhamento:{centro:'1025',deposito:''}}).metricas.etiquetas,3);
+assert.equal(env.filtrarAcompanhamento({token,acompanhamento:{centro:'1025',deposito:''}}).total,4);
+assert.equal(env.painel({token,acompanhamento:{centro:'1025',deposito:''}}).acompanhamento.itens.length,4);
 assert.equal(env.painel({token}).progresso_geral.contados,2);
-assert.equal(env.painel({token}).progresso_geral.percentual,66.7);
+assert.equal(env.painel({token}).progresso_geral.percentual,50);
 const quickScoped=env.filtrarAcompanhamento({token,acompanhamento:{centro:'1025',deposito:'1',termo:'2000'}});
 assert.equal(quickScoped.metricas.total,3,'Cards não mudam com o termo do filtro da lista');
 assert.equal(quickScoped.metricas.contados,2);
@@ -154,9 +183,10 @@ assert.equal(env.filtrarAcompanhamento({token,acompanhamento:{centro:'1025',depo
 assert.equal(duringFirst.itens[0].situacao,'1ª contagem em andamento');
 fail(()=>env.encerrarRodada({token,rodada_id:env.carregarContexto({token}).setores.find(x=>x.deposito==='1').rodada_id}),/sem contagem/);
 count(a,'3000',0);
+const etiqueta3000=env.table_('CONTAGENS').find(x=>x.codigo==='3000').etiqueta;
 count(b,'2000',0); // mesma SKU, dois contadores: autorizações e relatório precisam listar ambos
 assert.equal(env.painel({token}).progresso_geral.contados,3);
-assert.equal(env.painel({token}).progresso_geral.percentual,100);
+assert.equal(env.painel({token}).progresso_geral.percentual,75);
 const firstRound=env.carregarContexto({token}).setores.find(x=>x.deposito==='1').rodada_id;
 const firstClose=env.encerrarRodada({token,rodada_id:firstRound});assert.equal(firstClose.divergentes,2);
 assert(env.resultadosAtivos_().every(x=>x.status!=='APROVACAO_PENDENTE'),'Nova versão não gera aprovação pendente');
@@ -222,7 +252,7 @@ fail(()=>count(a,'1000',2,l1),/encerrada/);
 let second=env.abrirProximaRodada({token,centro:'1025',deposito:'1'});assert.equal(second.alvos,2);
 fail(()=>env.reabrirRodada({token,rodada_id:firstRound,motivo:'Há mais produtos a registrar na primeira'}),/posterior/);
 fail(()=>env.consultarProduto({token:b,centro:'1025',deposito:'1',codigo:'2000'}),/já foi conferido/);
-fail(()=>count(a,'1000',10,l1),/Outro contador/);
+fail(()=>count(a,'1000',10,l1),/Outro apontador/);
 // Permissão nominal de recontagem: somente quem foi liberado, com auditoria.
 fail(()=>env.listarPermissoesContadores({token:a}),/supervisor/);
 const permissaoAntes=env.listarPermissoesContadores({token});
@@ -236,13 +266,13 @@ assert.equal(env.consultarProduto({token:a,centro:'1025',deposito:'1',codigo:'10
 assert.equal(env.catalogoProdutos({token:a,centro:'1025',deposito:'1'}).itens.length,2);
 env.definirPermissaoContador({token,usuario:'CONTA',permitido:false});
 assert.equal(env.listarPermissoesContadores({token}).find(x=>x.usuario==='CONTA').permitido,false);
-fail(()=>count(a,'1000',10,l1),/Outro contador/);
+fail(()=>count(a,'1000',10,l1),/Outro apontador/);
 assert(env.table_('AUDITORIA').some(x=>x.acao==='PERMISSAO_RECONTAGEM_USUARIO'&&x.referencia==='CONTA'));
 count(b,'1000',10,l1);count(b,'3000',0);
 const duringSecond=env.painel({token,acompanhamento:{centro:'1025',deposito:'1'}}).acompanhamento;
 assert.equal(duringSecond.itens.find(x=>x.codigo==='1000').rodadas[1],'EM_CONTAGEM');
 assert.equal(env.sugerirProdutos({token:a,centro:'1025',deposito:'1',termo:'1000'}).itens.length,0, 'não mostrar SKU proibido em segunda rodada');
-assert.equal(env.catalogoProdutos({token:a,centro:'1025',deposito:'1'}).itens.length,0,'contador anterior não pode buscar SKU novamente');
+assert.equal(env.catalogoProdutos({token:a,centro:'1025',deposito:'1'}).itens.length,0,'apontador anterior não pode buscar SKU novamente');
 assert.equal(env.catalogoProdutos({token:b,centro:'1025',deposito:'1'}).itens.length,2,'segundo contador pode buscar divergentes');
 
 assert.equal(env.sugerirProdutos({token:b,centro:'1025',deposito:'1',termo:'1000'}).itens.length,1);
@@ -292,8 +322,10 @@ assert.equal(closedSecond.itens.find(x=>x.codigo==='1000').situacao,'Estoque Bat
 assert.equal(closedSecond.itens.find(x=>x.codigo==='3000').rodadas[1],'SEGUNDA_CONTAGEM');
 assert.equal(closedSecond.itens.find(x=>x.codigo==='3000').situacao,'Aguardando 3ª contagem');
 let third=env.abrirProximaRodada({token,centro:'1025',deposito:'1'});assert.equal(third.alvos,1);
-fail(()=>count(b,'3000',0),/Outro contador/);
-count(c,'3000',0);assert.equal(env.encerrarRodada({token,rodada_id:third.rodada_id}).divergentes,1);
+fail(()=>count(b,'3000',0),/Outro apontador/);
+count(c,'3000',0,{},'1',undefined,{etiqueta:etiqueta3000});
+assert.equal(env.contarEtiquetas_(env.table_('CONTAGENS').filter(x=>x.codigo==='3000')),2,'Etiqueta repetida em rodada posterior não é duplicada');
+assert.equal(env.encerrarRodada({token,rodada_id:third.rodada_id}).divergentes,1);
 const finalizedStats=env.painel({token,acompanhamento:{centro:'1025',deposito:'1'}});
 // Compatibilidade: instalações antigas podem ter resultados da 3ª rodada com status legado de aprovação.
 const legacyTab=env.sh_('RESULTADOS');
@@ -369,7 +401,8 @@ assert.equal(matchedFirst.rodada,1);
 assert.equal(matchedFirst.diferenca,0);
 assert.equal(matchedFirst.quantidade_sap,2);
 assert.equal(matchedFirst.quantidade_encontrada,2);
-assert.equal(env.painel({token}).progresso_geral.contados,3);
+assert.equal(env.painel({token}).progresso_geral.contados,4);
+assert.equal(env.painel({token}).metricas.etiquetas,env.contarEtiquetas_(env.table_('CONTAGENS')));
 assert.equal(env.painel({token,acompanhamento:{centro:'1025',deposito:'9'}}).metricas.contados,1);
 assert.equal(env.painel({token,acompanhamento:{centro:'1025',deposito:'9'}}).metricas.batendo,1);
 assert.equal(env.painel({token,acompanhamento:{centro:'1025',deposito:'9'}}).metricas.divergentes,0);
@@ -401,6 +434,18 @@ const muitasLocalizacoes=Array.from({length:450},(_,i)=>({rodada_id:'r-endereco'
   rua:String(i+1),zona:'1',posicao:'1',palete:'1',quantidade:1}));
 assert.equal(env.localizadorMateriais_(baseEndereco,muitasLocalizacoes,rodadasEndereco,{}).length,450);
 assert.equal(env.localizadorMateriais_(baseEndereco,muitasLocalizacoes,rodadasEndereco,{rua:'200'}).length,1);
+// Visão agregada dinâmica de um centro diferente e etiquetas com zeros iniciais.
+const variosCentros=[
+  {chave:'A|1025|1',codigo:'A',descricao:'Peça A',centro:'1025',deposito:'1'},
+  {chave:'B|1026|2',codigo:'B',descricao:'Peça B',centro:'1026',deposito:'2'},
+  {chave:'C|1026|16',codigo:'C',descricao:'Peça C',centro:'1026',deposito:'16'}
+];
+const center1026=env.acompanharProdutos_(variosCentros,[],[],[],{centro:'1026',deposito:''});
+assert.equal(center1026.total,2);
+assert(center1026.itens.every(x=>x.centro==='1026'));
+assert.equal(env.acompanharProdutos_(variosCentros,[],[],[],{centro:'1026',deposito:'16'}).total,1);
+assert.equal(env.contarEtiquetas_([{centro:'1025',deposito:'1',etiqueta:'000001'},{centro:'1025',deposito:'1',etiqueta:'1'},
+ {centro:'1025',deposito:'9',etiqueta:'000001'},{centro:'1025',deposito:'1',etiqueta:''}]),2);
 // Paginação do acompanhamento e interpretação da 3ª rodada conferida.
 const many=Array.from({length:61},(_,i)=>({chave:(7000+i)+'|1025|1',codigo:String(7000+i),descricao:'Tubo cobre '+i,centro:'1025',deposito:'1'}));
 const paged=env.acompanharProdutos_(many,[],[],[],{centro:'1025',deposito:'1',pagina:2});
@@ -446,4 +491,4 @@ fail(()=>env.limparDadosTeste({token,confirmacao:'APAGAR TESTES'}),/proibida/);
 assert.equal(env.table_('CONTAGENS').length,3);
 assert.equal(source.getSheetByName('Data').getLastRow(),5,'fonte SAP não deve mudar durante resets/ativação');
 env.sair({token});fail(()=>env.sessaoAtual({token}),/expirada|inválida/);
-console.log('OK: relatórios de rodadas fechadas e final consolidado, contadores múltiplos, estoque zero, legado de reabertura, exportação do localizador e remoção de aprovação; fluxos originais preservados.');
+console.log('OK: navegação por centro/depósitos, apontador legado, migração segura de ficha, dois conferentes, data e etiquetas, prevenção de duplicidades, card de etiquetas e relatórios preservados.');

@@ -1,5 +1,27 @@
 # Inventário Friovix — GitHub Pages + Google Apps Script
 
+## Atualização v11 — centros, apontadores, conferentes e etiquetas
+
+### Botões dos centros
+- **Dashboard:** a seleção do centro agora aparece em botões segmentados (por exemplo, **1025 | 1026**), gerados a partir dos centros da base ativa. Ao escolher o centro, os indicadores, o velocímetro, o acompanhamento e o localizador mostram **todos os seus depósitos** por padrão. O filtro Depósito permite refinar a um depósito específico. Pressionar novamente o botão do centro retorna à opção **Todos os depósitos**.
+- **Supervisão:** os mesmos botões, no topo da aba, mostram somente os depósitos e controles daquele centro. As operações de fechar/reabrir rodadas e os relatórios continuam específicas de cada depósito.
+
+### Quem conta e quem lança no sistema
+- **Conferentes físicos:** dois colaboradores realizam a conferência no estoque, anotando os resultados na ficha de papel (campos **1º Conferente** e **2º Conferente**).
+- **Apontador:** profissional que recebe a ficha preenchida, entra no site e transcreve os dados. Os perfis de acesso exibidos são **Apontador**, **Supervisor** e **Administrador**. Novos apontadores são cadastrados com perfil `APONTADOR`. Usuários antigos guardados como `CONTADOR` **continuam fazendo login**, porém aparecem como Apontador; nenhum usuário é excluído ou obrigado a trocar senha.
+- **Ficha digital:** na aba Contagem, são obrigatórios **Nº da etiqueta**, **Data da contagem**, **1º Conferente**, **2º Conferente**, endereço físico (quando quantidade maior que zero) e quantidade. O login identifica automaticamente o responsável pelo apontamento.
+- **Nº da etiqueta:** número com 1–12 dígitos, armazenado como **texto** (por exemplo, `000001`) para preservar zeros à esquerda. A etiqueta fica vinculada ao mesmo **Código + Centro + Depósito**; não pode gerar lançamento duplicado na mesma rodada nem ser vinculada a outro produto do setor. Pode ser informada novamente na 2ª/3ª rodada daquele mesmo material, conforme a ficha.
+- **Card Etiquetas Registradas:** conta etiquetas distintas pelo par **Centro + Depósito + número da etiqueta**, independente do número de rodadas. Também acompanha os filtros dos centros e depósitos. Registros antigos, sem etiqueta, **não são contabilizados como etiquetas**; suas quantidades e contagens permanecem intactas.
+- **Relatórios:** continuam mostrando SAP, físico, diferença, código, descrição, centro, depósito e rodada; acrescentam o **Apontador**, 1º/2º conferente(s), data(s) e etiqueta(s). Quando um material teve vários lançamentos parciais na mesma rodada, os responsáveis e as fichas são preservados.
+
+### Migração de banco já instalado
+O backend acrescenta automaticamente quatro campos **ao final** da aba `CONTAGENS` no **primeiro novo lançamento**:
+`data_contagem`, `primeiro_conferente`, `segundo_conferente`, `etiqueta`.
+
+Os **14 campos existentes e todas as linhas antigas são preservados**. Não execute `instalarProjeto` novamente. Não apague a aba `CONTAGENS`. A migração exige que os 14 cabeçalhos originais não tenham sido alterados por terceiros; o sistema rejeita conflito de coluna em vez de sobrescrever dados.
+
+Para ativar: substitua o conteúdo de `apps-script/Code.gs` pela versão atual deste repositório, salve e publique uma **nova versão** da implantação Apps Script, mantendo o endereço `/exec` da implantação existente. **`Bridge.html` não foi alterado nesta versão.** Atualize a página do GitHub Pages. Faça o primeiro lançamento em modo TESTE e valide os dados na planilha antes do inventário oficial.
+
 ## Relatórios de inventário e exportação do Localizador (v10)
 
 A etapa **Divergências aguardando aprovação** foi eliminada. As diferenças de 3ª rodada recebem status **DIVERGENTE_FINAL**, sem aprovação obrigatória e **sem atualização automática do SAP**. A aba histórica `APROVACOES` permanece intacta para não apagar dados anteriores, mas nenhuma nova aprovação é registrada.
@@ -7,8 +29,8 @@ A etapa **Divergências aguardando aprovação** foi eliminada. As diferenças d
 Na **Supervisão**, a coluna **Relatórios de inventário** oferece:
 - **Exportar rodada:** selecione uma rodada **encerrada** (1ª, 2ª ou 3ª) para um CSV contendo apenas os produtos contados nela.
 - **Exportar relatório final:** aparece quando o centro/depósito estiver finalizado: após uma rodada 1 ou 2 encerrada **sem diferenças**, ou após a 3ª encerrada, **mesmo com diferenças**. Esse arquivo reúne **todos os produtos** do setor, com o resultado válido da **última rodada daquele SKU**. Assim, produtos já conferidos na 1ª aparecem junto aos recontados na 2ª/3ª, sem somar rodadas.
-- As colunas do CSV incluem **nome(s) dos contadores**, código, descrição, centro, depósito, rodada efetiva do produto, quantidade física consolidada, quantidade SAP, diferença física − SAP e situação.
-- Se um produto recebeu lançamentos parciais de vários contadores na mesma rodada, todos os responsáveis aparecem no campo de nomes, uma vez cada. Quantidade **zero** também aparece no relatório.
+- As colunas do CSV incluem **apontador(es)** (usuários que digitaram), **conferentes físicos**, **data da ficha**, **etiquetas**, código, descrição, centro, depósito, rodada efetiva, quantidade física consolidada, quantidade SAP, diferença física − SAP e situação.
+- Se um produto recebeu lançamentos parciais de vários **apontadores** na mesma rodada, todos os responsáveis pelo registro são identificados, além dos nomes dos conferentes físicos. Quantidade **zero** também aparece no relatório.
 - Em caso de **reabertura**, os resultados anteriores deixam de ser considerados e a rodada reaberta só volta a ser exportável depois do novo encerramento. Exportações e reaberturas entram na auditoria.
 - Apenas perfis **SUPERVISOR** e **ADMIN** podem baixar os arquivos.
 

@@ -1,9 +1,10 @@
 /* Inventário Friovix — Cliente GitHub Pages. Nenhum segredo é colocado neste arquivo. */
 'use strict';
 const $=id=>document.getElementById(id);
-const state={bridgeWindow:null,bridgeOrigin:'',channel:'',ready:false,pending:new Map(),token:sessionStorage.getItem('inventario_session')||'',usuario:null,context:null,product:null,dashboard:null,requestId:null,tab:'contagem',productPage:1,suggestionSequence:0,suggestionTimer:null,suggestions:[],suggestionActive:-1,catalogCache:new Map(),catalogPending:new Map(),catalogUnsupported:false,catalogSignature:'',dashboardLoading:false,dashboardQueued:'',followupSeq:0,followupTimer:null,sapBusy:false,sapPreview:null,counterPermissions:[],counterPermissionsLoading:false};
+const state={bridgeWindow:null,bridgeOrigin:'',channel:'',ready:false,pending:new Map(),token:sessionStorage.getItem('inventario_session')||'',usuario:null,context:null,product:null,dashboard:null,requestId:null,tab:'contagem',productPage:1,suggestionSequence:0,suggestionTimer:null,suggestions:[],suggestionActive:-1,catalogCache:new Map(),catalogPending:new Map(),catalogUnsupported:false,catalogSignature:'',dashboardLoading:false,dashboardQueued:'',followupSeq:0,followupTimer:null,sapBusy:false,sapPreview:null,counterPermissions:[],counterPermissionsLoading:false,supervisionCenter:''};
 const safe=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const num=v=>new Intl.NumberFormat('pt-BR',{maximumFractionDigits:3}).format(Number(v)||0);
+const rotuloPerfil_=perfil=>({CONTADOR:'Apontador',APONTADOR:'Apontador',SUPERVISOR:'Supervisor',ADMIN:'Administrador'}[String(perfil)]||String(perfil));
 const random=()=>typeof crypto!=='undefined'&&crypto.randomUUID?crypto.randomUUID():String(Date.now())+'-'+Math.random().toString(36).slice(2);
 function toast(msg,type=''){const t=$('toast');t.textContent=msg;t.className='toast '+type;t.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.hidden=true,6000);}
 function show(page){for(const id of ['connecting','loginPage','appPage'])$(id).hidden=id!==page;}
@@ -49,7 +50,7 @@ function initBridge(){const url=window.INVENTARIO_CONFIG&&window.INVENTARIO_CONF
   setTimeout(()=>{if(!state.ready){$('connectingMessage').textContent='Não foi possível carregar o Apps Script. Confirme a implantação, a permissão "Qualquer pessoa", WEB_ORIGIN e o URL /exec. Verifique também bloqueios de iframe/cookies do navegador.';}},25000);
 }
 async function enterApp(){
-  show('appPage');$('accountLabel').textContent=state.usuario.nome+' · '+state.usuario.perfil;
+  show('appPage');$('accountLabel').textContent=state.usuario.nome+' · '+rotuloPerfil_(state.usuario.perfil);
   applyRole();await refreshContext();
   // Dashboard volumoso é carregado somente quando solicitado; login/contagem ficam mais rápidos.
   if(state.usuario.perfil==='ADMIN')await Promise.all([refreshUsers(),refreshEnvironment()]);
@@ -189,16 +190,48 @@ async function startOfficialInventory(){
 }
 function currentSector(){const val=$('sectorSelect').value;if(!val)throw Error('Selecione Centro e Depósito.');const [centro,deposito]=val.split('|');return {centro,deposito};}
 function resetProduct(){state.product=null;state.requestId=null;$('saveCount').disabled=true;$('countUnit').textContent='';$('productInfo').className='product-card muted';$('productInfo').textContent='Busque um produto no centro e depósito selecionados.';}
+function centrosDisponiveis(){
+  return [...new Set((state.context?.setores||[]).map(x=>String(x.centro)))].sort((a,b)=>a.localeCompare(b,'pt-BR',{numeric:true}));
+}
+function pintarBotoesCentro(id,atual){
+  $(id).innerHTML=centrosDisponiveis().map(c=>`<button type="button" class="center-choice ${c===atual?'active':''}" data-center="${safe(c)}" aria-pressed="${c===atual?'true':'false'}" title="Visualizar todos os depósitos do centro ${safe(c)}">${safe(c)}</button>`).join('');
+}
+function renderSupervisionCenterButtons(){
+  const centros=centrosDisponiveis();
+  if(!centros.includes(state.supervisionCenter))state.supervisionCenter=centros[0]||'';
+  pintarBotoesCentro('supervisionCenterButtons',state.supervisionCenter);
+}
 function renderDashboardSectorOptions(centerChanged=false){
-  const areas=state.context?.setores||[];
-  const centers=[...new Set(areas.map(x=>String(x.centro)))].sort((a,b)=>a.localeCompare(b,'pt-BR',{numeric:true}));
+  const areas=state.context?.setores||[],centers=centrosDisponiveis();
   const oldCenter=$('dashboardCenter').value;
-  $('dashboardCenter').innerHTML=centers.map(c=>`<option value="${safe(c)}">Centro ${safe(c)}</option>`).join('');
-  $('dashboardCenter').value=centers.includes(oldCenter)?oldCenter:centers[0]||'';
-  const depots=[...new Set(areas.filter(x=>String(x.centro)===$('dashboardCenter').value).map(x=>String(x.deposito)))].sort((a,b)=>a.localeCompare(b,'pt-BR',{numeric:true}));
+  const centro=centers.includes(oldCenter)?oldCenter:centers[0]||'';
+  $('dashboardCenter').value=centro;
+  pintarBotoesCentro('dashboardCenterButtons',centro);
+  const depots=[...new Set(areas.filter(x=>String(x.centro)===centro).map(x=>String(x.deposito)))].sort((a,b)=>a.localeCompare(b,'pt-BR',{numeric:true}));
   const oldDepot=centerChanged?'':$('dashboardDepot').value;
-  $('dashboardDepot').innerHTML=depots.map(d=>`<option value="${safe(d)}">Depósito ${safe(d||'Não informado')}</option>`).join('');
-  $('dashboardDepot').value=depots.includes(oldDepot)?oldDepot:depots[0]||'';
+  $('dashboardDepot').innerHTML='<option value="">Todos os depósitos</option>'+depots.filter(Boolean).map(d=>`<option value="${safe(d)}">Depósito ${safe(d)}</option>`).join('');
+  $('dashboardDepot').value=!centerChanged&&depots.includes(oldDepot)?oldDepot:'';
+  if(centerChanged||!$('filterCenter').value)$('filterCenter').value=centro;
+  if(centerChanged)$('filterDepot').value='';
+  renderSupervisionCenterButtons();
+}
+function selecionarCentroDashboard(centro){
+  if(!centrosDisponiveis().includes(centro))return;
+  // Pressionar o centro já ativo também retorna a "Todos os depósitos".
+  $('dashboardCenter').value=centro;
+  renderDashboardSectorOptions(true);
+  // Ao trocar de centro, iniciar pela visão integral, sem filtros antigos do Localizador.
+  $('dashboardQuery').value='';
+  for(const id of ['filterCode','filterRua','filterZona','filterPosicao','filterPalete'])$(id).value='';
+  state.productPage=1;
+  refreshDashboard('Atualizando centro…');
+}
+function selecionarCentroSupervisao(centro){
+  if(!centrosDisponiveis().includes(centro))return;
+  state.supervisionCenter=centro;
+  renderSupervisionCenterButtons();
+  if(state.dashboard)pintarTabelaSupervisao(state.dashboard);
+  else refreshDashboard();
 }
 function hideSuggestions(){
   state.suggestionSequence++;
@@ -308,7 +341,7 @@ function paintFollowup(data){
   state.productPage=data.pagina;
   const fmtPercent=n=>String(n||0)+'%';
   $('progressOverview').innerHTML=`
-    <div class="progress-tile"><span>Produtos deste centro/depósito</span><strong>${num(data.total)}</strong></div>
+    <div class="progress-tile"><span>Produtos dos depósitos selecionados</span><strong>${num(data.total)}</strong></div>
     <div class="progress-tile"><span>Contagem iniciada</span><strong>${num(data.contados)} <small>(${fmtPercent(data.progresso)})</small></strong><div class="progress-track"><div class="progress-fill started" style="width:${data.progresso}%"></div></div></div>
     <div class="progress-tile"><span>Contagem concluída</span><strong>${num(data.concluidos)} <small>(${fmtPercent(data.conclusao)})</small></strong><div class="progress-track"><div class="progress-fill completed" style="width:${data.conclusao}%"></div></div></div>
     <div class="progress-tile"><span>Estoque batendo</span><strong>${num(data.batendo)}</strong><small>${num(data.divergentes)} divergentes após 3 rodadas</small></div>`;
@@ -332,13 +365,25 @@ async function searchProduct(event){event.preventDefault();hideSuggestions();con
 async function saveCount(event){event.preventDefault();const button=$('saveCount');btnBusy(button,true,'Registrando...');try{
   if(!state.product)throw Error('Busque um produto antes de registrar.');
   const sector=currentSector();if(sector.centro!==state.product.centro||sector.deposito!==state.product.deposito)throw Error('O setor mudou. Busque o produto novamente.');
-  const d={...sector,codigo:state.product.codigo,rua:$('rua').value,zona:$('zona').value,posicao:$('posicao').value,palete:$('palete').value,quantidade:$('quantity').value};
+  const d={...sector,codigo:state.product.codigo,
+    rua:$('rua').value,zona:$('zona').value,posicao:$('posicao').value,palete:$('palete').value,
+    quantidade:$('quantity').value,
+    data_contagem:$('countDate').value,primeiro_conferente:$('firstChecker').value.trim(),
+    segundo_conferente:$('secondChecker').value.trim(),etiqueta:$('countTag').value.trim()};
   const value=d.quantidade.trim().includes(',')?d.quantidade.trim().replace(/\./g,'').replace(',','.'):d.quantidade.trim();if(!/^(\d+(\.\d+)?)$/.test(value))throw Error('Quantidade inválida. Use número positivo ou zero.');
   if(Number(value)>0&&['rua','zona','posicao','palete'].some(k=>!d[k]))throw Error('Informe todos os quatro campos de endereço.');
+   if(!/^\d{1,12}$/.test(d.etiqueta)||Number(d.etiqueta)===0)throw Error('Informe um número de etiqueta válido, com até 12 dígitos.');
+   if(!/^\d{4}-\d{2}-\d{2}$/.test(d.data_contagem))throw Error('Informe a data da contagem.');
+   if(d.primeiro_conferente.length<2||d.segundo_conferente.length<2)throw Error('Informe o nome dos dois conferentes.');
+   if(d.primeiro_conferente.toLocaleUpperCase('pt-BR')===d.segundo_conferente.toLocaleUpperCase('pt-BR'))throw Error('Informe dois conferentes distintos.');
   if(!state.requestId)state.requestId=random();
   const saved=await api('salvarContagem',{...d,request_id:state.requestId});
-  $('lastSaved').hidden=false;$('lastSaved').textContent=(saved.duplicado?'Lançamento já recebido anteriormente.':'Lançamento registrado com sucesso!')+' Produto '+d.codigo+' · '+d.quantidade+' '+state.product.um+' · Rua '+(d.rua||'—')+' / Zona '+(d.zona||'—')+' / Posição '+(d.posicao||'—')+' / Palete '+(d.palete||'—')+'.';
-  toast('Contagem registrada e auditada!','success');state.dashboard=null;state.requestId=null;$('quantity').value='';$('quantity').focus();
+  $('lastSaved').hidden=false;$('lastSaved').textContent=(saved.duplicado?'Lançamento já recebido anteriormente.':'Lançamento registrado com sucesso!')
+    +' Etiqueta Nº '+d.etiqueta+' · Data '+d.data_contagem+' · Conferentes '+d.primeiro_conferente+' e '+d.segundo_conferente
+    +' · Produto '+d.codigo+' · '+d.quantidade+' '+state.product.um+' · Rua '+(d.rua||'—')
+    +' / Zona '+(d.zona||'—')+' / Posição '+(d.posicao||'—')+' / Palete '+(d.palete||'—')+'.';
+  toast('Ficha de contagem registrada e auditada!','success');state.dashboard=null;state.requestId=null;
+    $('quantity').value='';$('countTag').value='';$('countTag').focus();
 }catch(err){toast(err.message,'error');}finally{btnBusy(button,false);button.disabled=!state.product;}}
 function fmtDate(x){const d=new Date(x);return Number.isFinite(d.getTime())?d.toLocaleString('pt-BR',{timeZone:'America/Manaus'}):String(x||'');}
 
@@ -369,7 +414,7 @@ function paintGauge(progresso){
 
 function renderRecountExports(){
   const center=$('dashboardCenter').value,depot=$('dashboardDepot').value;
-  const sector=state.dashboard?.setores?.find(x=>String(x.centro)===center&&String(x.deposito)===depot);
+  const sector=depot?state.dashboard?.setores?.find(x=>String(x.centro)===center&&String(x.deposito)===depot):null;
   // Somente a recontagem da etapa atual/seguinte fica visível (nunca ambas).
   const rodada=Number(sector?.numero)||0;
   const n2=Number(sector?.exportacao_segunda)||0,n3=Number(sector?.exportacao_terceira)||0;
@@ -428,7 +473,8 @@ function paintScopedIndicators(metricas){
   const cards=[
     {nome:'Produtos Contados',quantidade:m.contados,classe:'counted',detalhe:'Produtos distintos com lançamento'},
     {nome:'Produtos Batendo',quantidade:m.batendo,classe:'passed',detalhe:'Conferidos em rodada encerrada'},
-    {nome:'Produtos Divergente',quantidade:m.divergentes,classe:'failed',detalhe:'Divergentes após a 3ª contagem'}
+    {nome:'Produtos Divergente',quantidade:m.divergentes,classe:'failed',detalhe:'Divergentes após a 3ª contagem'},
+    {nome:'Etiquetas Registradas',quantidade:m.etiquetas||0,classe:'tags',detalhe:'Etiquetas distintas digitadas no sistema'}
   ];
   $('stats').innerHTML=cards.map(c=>`<div class="stat stat-${c.classe}"><span>${safe(c.nome)}</span><strong>${num(c.quantidade)}</strong><small>${safe(c.detalhe)}</small></div>`).join('');
   paintGauge(m);
@@ -466,15 +512,16 @@ async function exportarRelatorioInventario(tipo,centro,deposito,numero,button){
   try{
     const data=await api('exportarRelatorioInventario',{tipo,centro,deposito,numero},180000);
     if(!Array.isArray(data.itens)||!data.itens.length)throw Error('O relatório não possui produtos.');
-    const headers=['Nome de quem contou','Código','Descrição','Centro','Depósito','Rodada',
-      'Quantidade encontrada','Quantidade SAP','Diferença','Situação'];
-    const rows=data.itens.map(x=>[x.contador,x.codigo,x.descricao,x.centro,x.deposito,x.rodada,
+    const headers=['Apontador','1º Conferente','2º Conferente','Data da contagem','Etiqueta(s)',
+      'Código','Descrição','Centro','Depósito','Rodada','Quantidade encontrada','Quantidade SAP','Diferença','Situação'];
+    const rows=data.itens.map(x=>[x.apontador||x.contador,x.primeiro_conferente||'',x.segundo_conferente||'',
+      x.data_contagem||'',x.etiquetas||'',x.codigo,x.descricao,x.centro,x.deposito,x.rodada,
       x.quantidade_encontrada,x.quantidade_sap,x.diferenca,x.situacao]);
     const key=x=>String(x).replace(/[^A-Za-z0-9_-]/g,'_')||'SEM_DEP';
     const stamp=new Date().toISOString().slice(0,10).replace(/-/g,'');
     const label=tipo==='FINAL'?'FINAL':'RODADA_'+Number(numero);
     const name='FRIOVIX_INVENTARIO_'+label+'_C'+key(centro)+'_D'+key(deposito)+'_'+stamp+'.csv';
-    salvarCsvSeguro_(name,headers,rows,[5,6,7,8]);
+    salvarCsvSeguro_(name,headers,rows,[9,10,11,12]);
     toast('Relatório '+(tipo==='FINAL'?'final':'da '+numero+'ª rodada')+' gerado com '+num(data.itens.length)+' produtos.','success');
   }catch(err){toast('Relatório de inventário: '+err.message,'error');}
   finally{btnBusy(button,false);}
@@ -495,11 +542,9 @@ async function exportarLocalizacoes(button){
   finally{btnBusy(button,false);}
 }
 
-function paintDashboard(data){state.dashboard=data;
-  paintScopedIndicators(data.metricas);renderRecountExports();
-  $('locationCount').textContent=`${num(data.total_enderecos_filtrados)} endereços encontrados. Exibindo até 400 resultados; refine os filtros se necessário.`;
-  $('locationsBody').innerHTML=data.enderecos.length?data.enderecos.map(x=>`<tr><td><strong>${safe(x.codigo)}</strong></td><td class="locator-description">${safe(x.descricao)}</td><td class="locator-quantity-cell"><strong class="locator-quantity-value">${num(x.quantidade)}</strong></td><td>${safe(x.centro)}</td><td>${safe(x.deposito)}</td><td>${safe(x.rua)}</td><td>${safe(x.zona)}</td><td>${safe(x.posicao)}</td><td>${safe(x.palete)}</td><td>${safe(x.rodada)}</td></tr>`).join(''):'<tr><td colspan="10" class="empty">Nenhum material encontrado nos filtros escolhidos.</td></tr>';
-  $('sectorsBody').innerHTML=data.setores.length?data.setores.map(r=>{
+function pintarTabelaSupervisao(data){
+  const setores=(data.setores||[]).filter(r=>String(r.centro)===state.supervisionCenter);
+  $('sectorsBody').innerHTML=setores.length?setores.map(r=>{
     const percent=r.total_alvo?Math.round(100*r.produtos_registrados/r.total_alvo):0;
     const indicador=sectorRecommendation(r),hasDifferences=Number(r.divergentes_na_rodada)>0;
     const action=r.status==='ABERTA'
@@ -524,6 +569,13 @@ function paintDashboard(data){state.dashboard=data;
     return `<tr><td><strong>${safe(r.centro)}</strong></td><td>${safe(r.deposito)}</td><td>${safe(r.numero)}ª</td><td><span class="tag ${r.status==='ABERTA'?'warn':'end'}">${safe(r.status)}</span></td><td>${progress}</td><td>${num(r.faltando_total)}${r.faltando_total?'<div class="tiny">Ex.: '+safe(r.produtos_faltando.slice(0,3).join(', '))+'</div>':''}</td><td>${recommendation}</td><td>${reports}</td><td>${action}</td></tr>`;
   }).join(''):'<tr><td colspan="9" class="empty">Nenhum setor disponível.</td></tr>';
 
+}
+
+function paintDashboard(data){state.dashboard=data;
+  paintScopedIndicators(data.metricas);renderRecountExports();
+  $('locationCount').textContent=`${num(data.total_enderecos_filtrados)} endereços encontrados. Exibindo até 400 resultados; refine os filtros se necessário.`;
+  $('locationsBody').innerHTML=data.enderecos.length?data.enderecos.map(x=>`<tr><td><strong>${safe(x.codigo)}</strong></td><td class="locator-description">${safe(x.descricao)}</td><td class="locator-quantity-cell"><strong class="locator-quantity-value">${num(x.quantidade)}</strong></td><td>${safe(x.centro)}</td><td>${safe(x.deposito)}</td><td>${safe(x.rua)}</td><td>${safe(x.zona)}</td><td>${safe(x.posicao)}</td><td>${safe(x.palete)}</td><td>${safe(x.rodada)}</td></tr>`).join(''):'<tr><td colspan="10" class="empty">Nenhum material encontrado nos filtros escolhidos.</td></tr>';
+  pintarTabelaSupervisao(data);
   paintFollowup(data.acompanhamento);
 }
 function getFilter(){return Object.fromEntries([['codigo','filterCode'],['centro','filterCenter'],['deposito','filterDepot'],['rua','filterRua'],['zona','filterZona'],['posicao','filterPosicao'],['palete','filterPalete']].map(([k,id])=>[k,$(id).value.trim()]));}
@@ -662,7 +714,7 @@ async function confirmRoundAction(){
 function doClose(roundId){showRoundDialog('close',roundId);}
 function doReopen(roundId){showRoundDialog('reopen',roundId);}
 function doOpen(value){showRoundDialog('open',value);}
-async function refreshUsers(){if(state.usuario?.perfil!=='ADMIN')return;try{const users=await api('listarUsuarios');$('userList').innerHTML=users.map(u=>`<div class="person"><div><strong>${safe(u.nome)}</strong><small>${safe(u.usuario)}</small></div><span class="tag ${u.ativo==='SIM'?'ok':'warn'}">${safe(u.perfil)}</span></div>`).join('');}catch(err){toast(err.message,'error');}}
+async function refreshUsers(){if(state.usuario?.perfil!=='ADMIN')return;try{const users=await api('listarUsuarios');$('userList').innerHTML=users.map(u=>`<div class="person"><div><strong>${safe(u.nome)}</strong><small>${safe(u.usuario)}</small></div><span class="tag ${u.ativo==='SIM'?'ok':'warn'}">${safe(rotuloPerfil_(u.perfil))}</span></div>`).join('');}catch(err){toast(err.message,'error');}}
 async function doCreateUser(event){event.preventDefault();const button=$('userForm').querySelector('button');btnBusy(button,true,'Salvando...');try{
   const usuario={usuario:$('newUsername').value.trim(),nome:$('newName').value.trim(),perfil:$('newRole').value,senha:$('newPassword').value};await api('cadastrarUsuario',{usuario});
   $('userForm').reset();toast('Usuário cadastrado.','success');await refreshUsers();
@@ -675,8 +727,8 @@ function renderCounterPermissions(){
   $('counterPermissionList').innerHTML=filtered.length?filtered.map(x=>`<label class="counter-permission-row">
       <span class="counter-person"><strong>${safe(x.nome)}</strong><small>${safe(x.usuario)}</small></span>
       <span class="counter-permission-label">Permitir recontagem</span>
-      <input type="checkbox" data-counter-user="${safe(x.usuario)}" ${x.permitido?'checked':''} aria-label="Permitir que ${safe(x.nome)} reconte produtos em rodadas posteriores">
-    </label>`).join(''):'<p class="hint">Nenhum contador encontrado para essa pesquisa.</p>';
+      <input type="checkbox" data-counter-user="${safe(x.usuario)}" ${x.permitido?'checked':''} aria-label="Permitir que o apontador ${safe(x.nome)} lance o mesmo produto em rodadas posteriores">
+    </label>`).join(''):'<p class="hint">Nenhum apontador encontrado para essa pesquisa.</p>';
 }
 async function refreshCounterPermissions(){
   if(!canSupervise()||state.counterPermissionsLoading)return;
@@ -715,8 +767,16 @@ $('sectorSelect').addEventListener('change',()=>{resetProduct();$('productCode')
 $('countForm').addEventListener('input',()=>state.requestId=null);
 $('filterForm').addEventListener('submit',async e=>{e.preventDefault();await refreshDashboard('Filtrando endereços…');});
 $('refreshDashboard').addEventListener('click',refreshDashboard);
-$('dashboardCenter').addEventListener('change',()=>{state.productPage=1;renderDashboardSectorOptions(true);renderRecountExports();queueFollowup();});
-$('dashboardDepot').addEventListener('change',()=>{state.productPage=1;renderRecountExports();queueFollowup();});
+$('dashboardCenterButtons').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-center]');if(b)selecionarCentroDashboard(b.dataset.center);
+});
+$('supervisionCenterButtons').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-center]');if(b)selecionarCentroSupervisao(b.dataset.center);
+});
+$('dashboardDepot').addEventListener('change',()=>{
+  state.productPage=1;$('filterCenter').value=$('dashboardCenter').value;$('filterDepot').value=$('dashboardDepot').value;
+  refreshDashboard('Atualizando depósito…');
+});
 $('searchFollowup').addEventListener('click',()=>{state.productPage=1;refreshFollowup();});
 $('dashboardQuery').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();state.productPage=1;refreshFollowup();}});
 $('followupPrev').addEventListener('click',()=>{if(state.productPage>1){state.productPage--;refreshFollowup();}});
@@ -753,4 +813,6 @@ $('sapPreviewButton').addEventListener('click',visualizarBaseSAP);
 $('sapApplyButton').addEventListener('click',aplicarBaseSAP);
 $('exportRound2').addEventListener('click',e=>exportarRecontagem(2,e.currentTarget));
 $('exportRound3').addEventListener('click',e=>exportarRecontagem(3,e.currentTarget));
+// Data inicial no fuso local do dispositivo (sem deslocar para o dia UTC seguinte).
+$('countDate').value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
 initBridge();

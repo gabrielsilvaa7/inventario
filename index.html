@@ -41,7 +41,7 @@
       </nav>
 
       <section class="page active" id="tab-contagem">
-        <div class="heading"><div><div class="eyebrow">LANÇAMENTO FÍSICO</div><h2>Registrar material</h2><p>Preencha o endereço e a quantidade encontrada. Cada lançamento fica no histórico.</p></div></div>
+        <div class="heading"><div><div class="eyebrow">APONTAMENTO DAS FICHAS FÍSICAS</div><h2>Registrar material</h2><p>Transcreva as informações da etiqueta preenchida pela dupla de conferentes. O apontador registra os dados no sistema e cada ficha fica no histórico.</p></div></div>
         <div class="two-col">
           <article class="panel">
             <h3>Identificação</h3>
@@ -57,8 +57,17 @@
             <div id="productInfo" class="product-card muted">Selecione o setor e procure um material para iniciar a contagem.</div>
           </article>
           <article class="panel">
-            <h3>Quantidade e posição física</h3>
+            <h3>Dados da ficha e quantidade física</h3>
             <form id="countForm" class="stack">
+              <div class="count-sheet-details">
+                <label class="count-tag-field">Nº da etiqueta de contagem
+                  <input id="countTag" type="text" inputmode="numeric" maxlength="12" pattern="[0-9]{1,12}" placeholder="Ex.: 000001" autocomplete="off" required>
+                </label>
+                <label>Data da contagem<input id="countDate" type="date" required></label>
+                <label>1º Conferente<input id="firstChecker" type="text" maxlength="120" minlength="2" placeholder="Nome de quem conferiu fisicamente" autocomplete="off" required></label>
+                <label>2º Conferente<input id="secondChecker" type="text" maxlength="120" minlength="2" placeholder="Nome do segundo conferente" autocomplete="off" required></label>
+              </div>
+              <p class="hint count-sheet-hint">Os conferentes são a dupla que realizou a contagem no estoque. O usuário autenticado é o apontador responsável pela digitação. A mesma etiqueta pode reaparecer em rodadas posteriores do mesmo produto, mas não pode ser lançada duas vezes na mesma rodada.</p>
               <div class="grid-4">
                 <label>Rua<input id="rua" type="number" min="1" step="1" placeholder="1" inputmode="numeric"></label>
                 <label>Zona<input id="zona" type="number" min="1" step="1" placeholder="1" inputmode="numeric"></label>
@@ -78,20 +87,20 @@
         <div class="heading inline"><div><div class="eyebrow">INDICADORES</div><h2>Dashboard de inventário</h2><p>Contagens e localização de materiais por endereço físico.</p></div><div class="dashboard-actions"><span id="dashboardUpdatedAt" class="tiny" aria-live="polite">Aguardando primeira atualização</span><button class="btn secondary" id="refreshDashboard" type="button">Atualizar</button></div></div>
         <div id="dashboardStatus" class="operation-status" role="status" aria-live="polite" hidden><span class="mini-spinner" aria-hidden="true"></span><span id="dashboardStatusText">Atualizando informações do inventário…</span></div>
         <article class="panel dashboard-scope-panel">
-          <div class="dashboard-scope-title"><strong>Filtros do inventário</strong><span>Centro e depósito selecionados determinam os cards, o velocímetro e o acompanhamento. A pesquisa por produto filtra apenas a lista.</span></div>
+          <div class="dashboard-scope-title"><strong>Centro e depósitos do inventário</strong><span>Selecione 1025 ou 1026 para visualizar todos os depósitos e resultados do centro. É possível refinar por depósito abaixo.</span></div>
           <div class="followup-filters">
-            <label>Centro<select id="dashboardCenter"><option value="">Carregando...</option></select></label>
-            <label>Depósito<select id="dashboardDepot"><option value="">Carregando...</option></select></label>
+            <div class="center-selector-wrap"><span class="center-label">Centro</span><div id="dashboardCenterButtons" class="center-segmented" role="group" aria-label="Selecione o centro do Dashboard"></div><input type="hidden" id="dashboardCenter" value=""></div>
+            <label>Depósito<select id="dashboardDepot"><option value="">Todos os depósitos</option></select></label>
             <label>Localizar produto<input type="search" id="dashboardQuery" placeholder="Código ou descrição" autocomplete="off"></label>
             <button class="btn secondary" type="button" id="searchFollowup">Filtrar produtos</button>
           </div>
         </article>
         <div class="stats" id="stats"></div>
-        <article class="panel gauge-panel" aria-label="Evolução global da contagem por produto">
+        <article class="panel gauge-panel" aria-label="Evolução da contagem por produto nos filtros selecionados">
           <div class="gauge-intro">
-            <div class="eyebrow">EVOLUÇÃO DO SETOR SELECIONADO</div>
-            <h3>Produtos contados no centro e depósito</h3>
-            <p>Percentual de códigos registrados no centro/depósito escolhido, não de unidades. Lançamentos com quantidade zero também contam; várias contagens do mesmo produto não duplicam o progresso.</p>
+            <div class="eyebrow">EVOLUÇÃO DO CENTRO SELECIONADO</div>
+            <h3>Produtos contados nos depósitos selecionados</h3>
+            <p>Percentual de produtos registrados no centro e depósitos selecionados, não de unidades. Lançamentos com quantidade zero também contam; várias contagens do mesmo produto não duplicam o progresso.</p>
           </div>
           <div class="gauge-visual" aria-live="polite">
             <svg viewBox="0 0 240 138" class="gauge-svg" aria-hidden="true">
@@ -146,14 +155,15 @@
       </section>
 
       <section class="page" id="tab-supervisao">
+        <div class="center-supervision-heading"><strong>Visualizar centro</strong><div id="supervisionCenterButtons" class="center-segmented" role="group" aria-label="Selecione o centro da Supervisão"></div></div>
         <div class="heading"><div><div class="eyebrow">GESTÃO DE RODADAS</div><h2>Supervisão</h2><p>Gerencie o encerramento das rodadas e exporte relatórios por centro e depósito. O relatório final reúne o último resultado válido de cada produto quando o estoque estiver batendo ou após a 3ª contagem. Reaberturas exigem justificativa e preservam o histórico.</p></div></div>
         <article class="panel"><div class="panel-head"><div><h3>Status por centro e depósito</h3><p class="hint">A evolução considera produtos distintos da rodada atual. Após o encerramento, o sistema indica a próxima etapa ou o resultado.</p></div></div><div class="table-wrap"><table class="sector-table"><thead><tr><th>Centro</th><th>Depósito</th><th>Rodada</th><th>Status</th><th>Progresso da contagem</th><th>Faltantes</th><th>Próxima etapa / Resultado</th><th>Relatórios de inventário</th><th>Ação</th></tr></thead><tbody id="sectorsBody"></tbody></table></div></article>
         <article class="panel report-guide"><div class="panel-head"><div><h3>Relatórios de contagem</h3><p class="hint">Após encerrar uma rodada, selecione a rodada desejada e exporte seu resultado. O relatório final fica disponível quando o depósito estiver totalmente conferido, seja na 1ª ou 2ª rodada, ou ao encerrar a 3ª, com ou sem divergência. As diferenças são calculadas em relação ao saldo SAP; nenhuma exportação altera esse saldo.</p></div></div></article>
         <article class="panel" id="counterPermissionsPanel">
-          <div class="panel-head"><div><h3>Configurações operacionais</h3><p class="hint">Libere individualmente quais contadores podem contar novamente o mesmo material em rodadas posteriores. A regra padrão é exigir outro contador.</p></div><button type="button" id="refreshCounterPermissions" class="btn secondary small">Atualizar lista</button></div>
-          <label for="counterPermissionSearch" class="counter-search-label">Pesquisar contador por nome ou usuário</label>
-          <input type="search" id="counterPermissionSearch" class="counter-search" placeholder="Digite o nome ou usuário do contador…" autocomplete="off">
-          <div id="counterPermissionStatus" class="operation-status secondary-status" role="status" aria-live="polite" hidden><span class="mini-spinner" aria-hidden="true"></span><span>Carregando permissões dos contadores…</span></div>
+          <div class="panel-head"><div><h3>Configurações operacionais</h3><p class="hint">Libere individualmente quais apontadores podem lançar o mesmo material em rodadas posteriores. A regra padrão é exigir outro apontador.</p></div><button type="button" id="refreshCounterPermissions" class="btn secondary small">Atualizar lista</button></div>
+          <label for="counterPermissionSearch" class="counter-search-label">Pesquisar apontador por nome ou usuário</label>
+          <input type="search" id="counterPermissionSearch" class="counter-search" placeholder="Digite o nome ou usuário do apontador…" autocomplete="off">
+          <div id="counterPermissionStatus" class="operation-status secondary-status" role="status" aria-live="polite" hidden><span class="mini-spinner" aria-hidden="true"></span><span>Carregando permissões dos apontadores…</span></div>
           <div id="counterPermissionList" class="counter-permission-list" aria-live="polite"><p class="hint">Abra a aba Supervisão para carregar a equipe.</p></div>
         </article>
       </section>
@@ -183,7 +193,7 @@
         </article>
         <h3>Gerenciar usuários</h3>
         <div class="two-col">
-          <article class="panel"><h3>Novo usuário</h3><form id="userForm" class="stack"><label>Usuário<input id="newUsername" placeholder="JOAO.SILVA" minlength="3" required></label><label>Nome<input id="newName" required></label><label>Perfil<select id="newRole"><option value="CONTADOR">Contador</option><option value="SUPERVISOR">Supervisor</option><option value="ADMIN">Administrador</option></select></label><label>Senha inicial<input id="newPassword" type="password" minlength="10" required autocomplete="new-password"></label><button class="btn primary" type="submit">Cadastrar usuário</button></form></article>
+          <article class="panel"><h3>Novo usuário</h3><form id="userForm" class="stack"><label>Usuário<input id="newUsername" placeholder="JOAO.SILVA" minlength="3" required></label><label>Nome<input id="newName" required></label><label>Perfil<select id="newRole"><option value="APONTADOR">Apontador</option><option value="SUPERVISOR">Supervisor</option><option value="ADMIN">Administrador</option></select></label><label>Senha inicial<input id="newPassword" type="password" minlength="10" required autocomplete="new-password"></label><button class="btn primary" type="submit">Cadastrar usuário</button></form></article>
           <article class="panel"><h3>Equipe autorizada</h3><div id="userList" class="people-list"></div></article>
         </div>
       </section>
