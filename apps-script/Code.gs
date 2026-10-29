@@ -88,6 +88,12 @@ function random_(){return uuid_().replace(/-/g,'')+uuid_().replace(/-/g,'');}
 function passHash_(password,salt){let h=str_(password)+'|'+str_(salt)+'|'+prop_('AUTH_PEPPER');for(let i=0;i<PASSWORD_ROUNDS;i++)h=sha_(h);return h;}
 function decimal_(raw,label){ if(typeof raw==='number'){if(!Number.isFinite(raw))throw Error(label+' inválido.');return raw;}const v=str_(raw);if(!v)throw Error(label+' obrigatório.');let txt=v;if(txt.includes(','))txt=txt.replace(/\./g,'').replace(',','.');if(!/^-?\d+(\.\d+)?$/.test(txt))throw Error(label+' inválido.');const n=Number(txt);if(!Number.isFinite(n))throw Error(label+' inválido.');return n;}
 function integer_(raw,label){const n=Number(raw);if(!Number.isSafeInteger(n)||n<1)throw Error(label+' deve ser número inteiro a partir de 1.');return n;}
+/** Endereço alfanumérico (p.ex. A01001), preservando zeros iniciais e normalizado em maiúsculas. */
+function normalizarPosicao_(raw){
+  const posicao=str_(raw).toUpperCase();
+  if(!/^[A-Z0-9]{1,24}$/.test(posicao))throw Error('Posição deve ter de 1 a 24 letras ou números, sem espaços (ex.: A01001).');
+  return posicao;
+}
 function noNeg_(n,label){if(n<0)throw Error(label+' não pode ser negativo.');return n;}
 function toMillis_(x){const n=new Date(String(x)).getTime();return Number.isFinite(n)?n:0;}
 function isSupervisor_(u){return u.perfil==='ADMIN'||u.perfil==='SUPERVISOR';}
@@ -479,7 +485,11 @@ function salvarContagem(d){return withLock_(()=>{
   const um=norm_(p.um),precision=['UN','UND','PÇ','PC','PCS','EA','CX','KIT'].includes(um)?0:3;
   if(Math.abs(qty*Math.pow(10,precision)-Math.round(qty*Math.pow(10,precision)))>0.000001)throw Error('Unidade '+um+' aceita no máximo '+precision+' casa(s) decimal(is).');
   if(qty>0&&['rua','zona','posicao','palete'].some(k=>str_(d[k])===''))throw Error('Informe Rua, Zona, Posição e Palete.');
-  const location=['rua','zona','posicao','palete'].map(k=>qty===0&&str_(d[k])===''?'':integer_(d[k],k));
+  // Rua, Zona e Palete permanecem numéricos. Posição é um identificador alfanumérico, não um número.
+  const location=['rua','zona','posicao','palete'].map(k=>{
+    if(qty===0&&str_(d[k])==='')return '';
+    return k==='posicao'?normalizarPosicao_(d[k]):integer_(d[k],k);
+  });
   if(!podeRecontarUsuario_(u.usuario)&&Number(r.numero)>1){const prevIds=new Set(rounds.filter(x=>Number(x.numero)<Number(r.numero)).map(x=>x.rodada_id));if(registros.some(x=>prevIds.has(x.rodada_id)&&x.codigo===code&&x.usuario===u.usuario))throw Error('Outro apontador deve realizar esta rodada.');}
   const dataContagem=validarDataContagem_(d.data_contagem),
     primeiroConferente=validarConferente_(d.primeiro_conferente,'1º Conferente'),
@@ -650,7 +660,8 @@ function localizadorMateriais_(base,contagens,rodadas,filtro){
   const rows=[];
   for(const x of grouped.values()){
     if(str_(f.codigo)&&!str_(x.codigo).includes(str_(f.codigo)))continue;
-    if(['centro','deposito','rua','zona','posicao','palete'].some(k=>str_(f[k])&&str_(x[k])!==str_(f[k])))continue;
+    if(['centro','deposito','rua','zona','posicao','palete'].some(k=>str_(f[k])&&
+      (k==='posicao'?str_(x[k]).toUpperCase()!==str_(f[k]).toUpperCase():str_(x[k])!==str_(f[k]))))continue;
     const produto=byCode.get(normalizeKey_(x.codigo,x.centro,x.deposito));
     if(!produto)continue;
     rows.push({...x,descricao:str_(produto.descricao),um:str_(produto.um)});

@@ -1,5 +1,22 @@
 # Inventário Friovix — GitHub Pages + Google Apps Script
 
+## Ajustes v12 — posição alfanumérica, confirmação do apontador e listas na Supervisão
+
+### Posição física
+Na aba **Contagem**, o campo **Posição** agora é texto alfanumérico, com 1–24 caracteres (letras ou números), sem espaços ou símbolos; exemplos `A01001`, `A01002` e `A10028`. Letras digitadas em minúsculas são normalizadas para maiúsculas. O backend também valida essa regra, armazenando como texto para preservar os zeros e sem alterar a lógica numérica de Rua, Zona e Palete. O **Localizador de materiais** também permite pesquisar posições alfanuméricas, sem diferenciar maiúsculas/minúsculas. Contagens antigas com posição numérica continuam válidas.
+
+### Revisão obrigatória antes de registrar
+O botão **Registrar contagem** passa a abrir uma janela central com **apontador**, número da etiqueta, data, dois conferentes, código/descrição, centro/depósito, rodada, Rua, Zona, Posição, Palete, quantidade e unidade. O envio ao Apps Script ocorre **somente após Confirmar e registrar**; **Voltar e corrigir** não cria lançamento. A confirmação bloqueia duplos cliques, apresenta indicador de processamento e mantém o mesmo `request_id` ao tentar novamente depois de uma falha, reduzindo o risco de duplicidades. A auditoria, as verificações de etiqueta e a validação da rodada pelo backend continuam ativas.
+
+### Supervisão — resultado clicável
+A coluna **Relatórios de inventário** foi removida para dar mais espaço à tabela. Na coluna **Próxima etapa / Resultado**, o status agora é um botão que abre um diálogo:
+- **Segunda Contagem** / **Terceira Contagem:** oferece **Baixar lista da 2ª/3ª contagem**, com apenas os materiais divergentes da rodada anterior (sem quantidades SAP, preservando a conferência independente). O download também fica acessível quando a próxima rodada já está aberta.
+- **Estoque Batendo** / **Estoque Divergente:** mantém o acesso aos relatórios finais quando o setor está concluído.
+- Em todos os estados, quando já há rodadas encerradas, o diálogo permite escolher uma delas e **Baixar rodada**. Assim, a remoção da coluna não elimina o acesso aos relatórios históricos.
+- **Em contagem** permite consultar a lista aplicável à recontagem (se for 2ª/3ª) e os resultados encerrados anteriormente. Se nada estiver disponível, o diálogo informa isso.
+
+**Para ativar:** atualize **somente o `apps-script/Code.gs`** na implantação atual, salve e implante uma **nova versão** da Web App. Os arquivos `index.html`, `app.js` e `styles.css` serão publicados pelo GitHub Pages. `Bridge.html` permanece inalterado. **Não execute `instalarProjeto` novamente** e não apague as planilhas existentes. Valide no modo TESTE antes do inventário oficial.
+
 ## Atualização v11 — centros, apontadores, conferentes e etiquetas
 
 ### Botões dos centros

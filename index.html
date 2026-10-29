@@ -71,7 +71,7 @@
               <div class="grid-4">
                 <label>Rua<input id="rua" type="number" min="1" step="1" placeholder="1" inputmode="numeric"></label>
                 <label>Zona<input id="zona" type="number" min="1" step="1" placeholder="1" inputmode="numeric"></label>
-                <label>Posição<input id="posicao" type="number" min="1" step="1" placeholder="1" inputmode="numeric"></label>
+                <label>Posição<input id="posicao" type="text" inputmode="text" maxlength="24" pattern="[A-Za-z0-9]{1,24}" placeholder="Ex.: A01001" autocapitalize="characters" autocomplete="off"></label>
                 <label>Palete<input id="palete" type="number" min="1" step="1" placeholder="1" inputmode="numeric"></label>
               </div>
               <label>Quantidade contada <span id="countUnit" class="tiny"></span><input id="quantity" type="text" inputmode="decimal" placeholder="Ex.: 2,350" required></label>
@@ -144,7 +144,7 @@
             <label>Depósito<input id="filterDepot" placeholder="1"></label>
             <label>Rua<input id="filterRua" type="number" min="1"></label>
             <label>Zona<input id="filterZona" type="number" min="1"></label>
-            <label>Posição<input id="filterPosicao" type="number" min="1"></label>
+            <label>Posição<input id="filterPosicao" type="text" maxlength="24" placeholder="Ex.: A01001" autocapitalize="characters"></label>
             <label>Palete<input id="filterPalete" type="number" min="1"></label>
             <button class="btn primary filter-btn" type="submit">Pesquisar</button>
           </form>
@@ -157,8 +157,8 @@
       <section class="page" id="tab-supervisao">
         <div class="center-supervision-heading"><strong>Visualizar centro</strong><div id="supervisionCenterButtons" class="center-segmented" role="group" aria-label="Selecione o centro da Supervisão"></div></div>
         <div class="heading"><div><div class="eyebrow">GESTÃO DE RODADAS</div><h2>Supervisão</h2><p>Gerencie o encerramento das rodadas e exporte relatórios por centro e depósito. O relatório final reúne o último resultado válido de cada produto quando o estoque estiver batendo ou após a 3ª contagem. Reaberturas exigem justificativa e preservam o histórico.</p></div></div>
-        <article class="panel"><div class="panel-head"><div><h3>Status por centro e depósito</h3><p class="hint">A evolução considera produtos distintos da rodada atual. Após o encerramento, o sistema indica a próxima etapa ou o resultado.</p></div></div><div class="table-wrap"><table class="sector-table"><thead><tr><th>Centro</th><th>Depósito</th><th>Rodada</th><th>Status</th><th>Progresso da contagem</th><th>Faltantes</th><th>Próxima etapa / Resultado</th><th>Relatórios de inventário</th><th>Ação</th></tr></thead><tbody id="sectorsBody"></tbody></table></div></article>
-        <article class="panel report-guide"><div class="panel-head"><div><h3>Relatórios de contagem</h3><p class="hint">Após encerrar uma rodada, selecione a rodada desejada e exporte seu resultado. O relatório final fica disponível quando o depósito estiver totalmente conferido, seja na 1ª ou 2ª rodada, ou ao encerrar a 3ª, com ou sem divergência. As diferenças são calculadas em relação ao saldo SAP; nenhuma exportação altera esse saldo.</p></div></div></article>
+        <article class="panel"><div class="panel-head"><div><h3>Status por centro e depósito</h3><p class="hint">A evolução considera produtos distintos da rodada atual. Clique na indicação da coluna <strong>Próxima etapa / Resultado</strong> para baixar a lista da próxima contagem ou os relatórios encerrados daquele depósito.</p></div></div><div class="table-wrap"><table class="sector-table"><thead><tr><th>Centro</th><th>Depósito</th><th>Rodada</th><th>Status</th><th>Progresso da contagem</th><th>Faltantes</th><th>Próxima etapa / Resultado</th><th>Ação</th></tr></thead><tbody id="sectorsBody"></tbody></table></div></article>
+        <article class="panel report-guide"><div class="panel-head"><div><h3>Listas e relatórios de contagem</h3><p class="hint">Clique na situação de cada depósito para obter a lista de materiais que precisarão da 2ª ou 3ª conferência. Os resultados das rodadas já encerradas e o relatório final também ficam disponíveis nessa janela, sem alterar o saldo SAP.</p></div></div></article>
         <article class="panel" id="counterPermissionsPanel">
           <div class="panel-head"><div><h3>Configurações operacionais</h3><p class="hint">Libere individualmente quais apontadores podem lançar o mesmo material em rodadas posteriores. A regra padrão é exigir outro apontador.</p></div><button type="button" id="refreshCounterPermissions" class="btn secondary small">Atualizar lista</button></div>
           <label for="counterPermissionSearch" class="counter-search-label">Pesquisar apontador por nome ou usuário</label>
@@ -208,6 +208,30 @@
     </label>
     <div id="roundDialogStatus" class="operation-status secondary-status" role="status" aria-live="polite" hidden><span class="mini-spinner" aria-hidden="true"></span><span id="roundDialogStatusText">Processando a operação…</span></div>
     <div class="round-dialog-actions"><button type="button" class="btn secondary" id="roundDialogCancel">Cancelar</button><button type="button" class="btn primary" id="roundDialogConfirm">Confirmar</button></div>
+  </dialog>
+  <dialog id="countConfirmDialog" class="round-action-dialog count-confirm-dialog" aria-labelledby="countConfirmTitle" aria-describedby="countConfirmDescription">
+    <div class="round-dialog-head"><span class="round-dialog-icon count-confirm-icon" aria-hidden="true">▤</span><div><span class="eyebrow">CONFERÊNCIA ANTES DO LANÇAMENTO</span><h2 id="countConfirmTitle">Confirmar contagem</h2></div></div>
+    <p id="countConfirmDescription">Compare os dados abaixo com a ficha de papel. O lançamento só será gravado depois que você confirmar.</p>
+    <div class="count-confirm-details" id="countConfirmDetails"></div>
+    <div id="countConfirmStatus" class="operation-status secondary-status" role="status" aria-live="polite" hidden><span class="mini-spinner" aria-hidden="true"></span><span id="countConfirmStatusText">Gravando contagem…</span></div>
+    <div class="round-dialog-actions"><button type="button" class="btn secondary" id="countConfirmCancel">Voltar e corrigir</button><button type="button" class="btn primary" id="countConfirmSave">Confirmar e registrar</button></div>
+  </dialog>
+  <dialog id="sectorResultDialog" class="round-action-dialog sector-result-dialog" aria-labelledby="sectorResultTitle" aria-describedby="sectorResultDescription">
+    <div class="round-dialog-head"><span class="round-dialog-icon" aria-hidden="true">⇩</span><div><span class="eyebrow">SUPERVISÃO · CENTRO E DEPÓSITO</span><h2 id="sectorResultTitle">Lista de contagem</h2></div></div>
+    <p id="sectorResultDescription"></p>
+    <div class="sector-result-context" id="sectorResultContext"></div>
+    <section id="sectorNextSection" class="sector-export-section" hidden>
+      <strong id="sectorNextLabel">Lista para próxima contagem</strong>
+      <p>Somente os produtos divergentes serão incluídos. A lista não revela o saldo SAP, para preservar a conferência independente.</p>
+      <button type="button" id="sectorNextDownload" class="btn primary full">Baixar lista · CSV</button>
+    </section>
+    <section id="sectorReportsSection" class="sector-export-section" hidden>
+      <strong>Relatórios das contagens encerradas</strong>
+      <div class="sector-report-controls" id="sectorReportControls"><select id="sectorReportRound" aria-label="Selecione a rodada concluída"></select><button type="button" class="btn secondary" id="sectorReportDownload">Baixar rodada</button></div>
+      <button type="button" class="btn report-final-btn full" id="sectorFinalDownload" hidden>Baixar relatório final</button>
+    </section>
+    <p id="sectorNoExports" class="hint" hidden>Não há lista de recontagem ou relatório disponível enquanto a rodada ainda está em andamento.</p>
+    <div class="round-dialog-actions"><button type="button" class="btn secondary" id="sectorResultClose">Fechar</button></div>
   </dialog>
   <script src="config.js"></script><script src="app.js"></script>
 </body>

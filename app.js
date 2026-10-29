@@ -362,29 +362,94 @@ async function searchProduct(event){event.preventDefault();hideSuggestions();con
   $('productInfo').className='product-card';$('productInfo').innerHTML=`<strong>${safe(product.descricao)}</strong><div class="meta">Código ${safe(product.codigo)} · Centro ${safe(product.centro)} · Depósito ${safe(product.deposito)} · Unidade ${safe(product.um)}</div><span class="pill">Rodada ${safe(product.rodada_numero)}</span>`;
   $('countUnit').textContent='('+product.um+')';$('saveCount').disabled=false;$('quantity').focus();
 }catch(err){toast(err.message,'error');}finally{btnBusy(button,false);}}
-async function saveCount(event){event.preventDefault();const button=$('saveCount');btnBusy(button,true,'Registrando...');try{
+/** A gravação acontece exclusivamente após a confirmação da ficha exibida no modal. */
+let pendingCount=null,countDialogBusy=false;
+function lerDadosContagem(){
   if(!state.product)throw Error('Busque um produto antes de registrar.');
-  const sector=currentSector();if(sector.centro!==state.product.centro||sector.deposito!==state.product.deposito)throw Error('O setor mudou. Busque o produto novamente.');
-  const d={...sector,codigo:state.product.codigo,
-    rua:$('rua').value,zona:$('zona').value,posicao:$('posicao').value,palete:$('palete').value,
-    quantidade:$('quantity').value,
-    data_contagem:$('countDate').value,primeiro_conferente:$('firstChecker').value.trim(),
-    segundo_conferente:$('secondChecker').value.trim(),etiqueta:$('countTag').value.trim()};
-  const value=d.quantidade.trim().includes(',')?d.quantidade.trim().replace(/\./g,'').replace(',','.'):d.quantidade.trim();if(!/^(\d+(\.\d+)?)$/.test(value))throw Error('Quantidade inválida. Use número positivo ou zero.');
-  if(Number(value)>0&&['rua','zona','posicao','palete'].some(k=>!d[k]))throw Error('Informe todos os quatro campos de endereço.');
-   if(!/^\d{1,12}$/.test(d.etiqueta)||Number(d.etiqueta)===0)throw Error('Informe um número de etiqueta válido, com até 12 dígitos.');
-   if(!/^\d{4}-\d{2}-\d{2}$/.test(d.data_contagem))throw Error('Informe a data da contagem.');
-   if(d.primeiro_conferente.length<2||d.segundo_conferente.length<2)throw Error('Informe o nome dos dois conferentes.');
-   if(d.primeiro_conferente.toLocaleUpperCase('pt-BR')===d.segundo_conferente.toLocaleUpperCase('pt-BR'))throw Error('Informe dois conferentes distintos.');
-  if(!state.requestId)state.requestId=random();
-  const saved=await api('salvarContagem',{...d,request_id:state.requestId});
-  $('lastSaved').hidden=false;$('lastSaved').textContent=(saved.duplicado?'Lançamento já recebido anteriormente.':'Lançamento registrado com sucesso!')
-    +' Etiqueta Nº '+d.etiqueta+' · Data '+d.data_contagem+' · Conferentes '+d.primeiro_conferente+' e '+d.segundo_conferente
-    +' · Produto '+d.codigo+' · '+d.quantidade+' '+state.product.um+' · Rua '+(d.rua||'—')
-    +' / Zona '+(d.zona||'—')+' / Posição '+(d.posicao||'—')+' / Palete '+(d.palete||'—')+'.';
-  toast('Ficha de contagem registrada e auditada!','success');state.dashboard=null;state.requestId=null;
+  const sector=currentSector(),produto=state.product;
+  if(sector.centro!==produto.centro||sector.deposito!==produto.deposito)
+    throw Error('O setor mudou. Busque o produto novamente.');
+  const d={...sector,codigo:produto.codigo,
+    rua:$('rua').value.trim(),zona:$('zona').value.trim(),
+    posicao:$('posicao').value.trim().toUpperCase(),palete:$('palete').value.trim(),
+    quantidade:$('quantity').value.trim(),data_contagem:$('countDate').value,
+    primeiro_conferente:$('firstChecker').value.trim(),segundo_conferente:$('secondChecker').value.trim(),
+    etiqueta:$('countTag').value.trim()};
+  const qty=d.quantidade.includes(',')?d.quantidade.replace(/\./g,'').replace(',','.'):d.quantidade;
+  if(!/^(\d+(\.\d+)?)$/.test(qty))throw Error('Quantidade inválida. Use número positivo ou zero.');
+  if(Number(qty)>0&&['rua','zona','posicao','palete'].some(k=>!d[k]))
+    throw Error('Informe Rua, Zona, Posição e Palete.');
+  if(d.posicao&&!/^[A-Z0-9]{1,24}$/.test(d.posicao))
+    throw Error('Posição inválida. Digite letras e números, por exemplo A01001.');
+  for(const k of ['rua','zona','palete'])
+    if(d[k]&&(!/^\d+$/.test(d[k])||Number(d[k])<1))throw Error('Informe '+k+' com números inteiros positivos.');
+  if(!/^\d{1,12}$/.test(d.etiqueta)||Number(d.etiqueta)===0)
+    throw Error('Informe um número de etiqueta válido, com até 12 dígitos.');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d.data_contagem))
+    throw Error('Informe a data da contagem.');
+  if(d.primeiro_conferente.length<2||d.segundo_conferente.length<2)
+    throw Error('Informe o nome dos dois conferentes.');
+  if(d.primeiro_conferente.toLocaleUpperCase('pt-BR')===d.segundo_conferente.toLocaleUpperCase('pt-BR'))
+    throw Error('Informe dois conferentes distintos.');
+  d.quantidade=qty;
+  return {data:d,product:{...produto}};
+}
+function saveCount(event){
+  event.preventDefault();
+  if(countDialogBusy||$('countConfirmDialog').open)return;
+  try{
+    pendingCount=lerDadosContagem();
+    const d=pendingCount.data,p=pendingCount.product;
+    if(!state.requestId)state.requestId=random();
+    $('posicao').value=d.posicao;
+    const fields=[
+      ['Apontador',state.usuario?.nome||'—'],['Nº da etiqueta',d.etiqueta],
+      ['Data da contagem',d.data_contagem.split('-').reverse().join('/')],
+      ['1º Conferente',d.primeiro_conferente],['2º Conferente',d.segundo_conferente],
+      ['Produto',p.codigo+' — '+p.descricao],['Centro / Depósito',d.centro+' / '+d.deposito],
+      ['Rodada',String(p.rodada_numero)+'ª'],['Rua',d.rua||'—'],['Zona',d.zona||'—'],
+      ['Posição',d.posicao||'—'],['Palete',d.palete||'—'],
+      ['Quantidade física',d.quantidade+' '+p.um]
+    ];
+    $('countConfirmDetails').innerHTML=fields.map(([name,value])=>
+      '<div class="count-confirm-field"><span>'+safe(name)+'</span><strong>'+safe(value)+'</strong></div>'
+    ).join('');
+    $('countConfirmStatus').hidden=true;$('countConfirmCancel').disabled=false;
+    $('countConfirmDialog').showModal();$('countConfirmSave').focus();
+  }catch(err){pendingCount=null;toast(err.message,'error');}
+}
+function fecharConfirmacaoContagem(){
+  if(countDialogBusy)return;
+  $('countConfirmDialog').close();pendingCount=null;
+  $('saveCount').focus();
+}
+async function confirmarContagem(){
+  if(!pendingCount||countDialogBusy)return;
+  const {data:d,product:p}=pendingCount;
+  countDialogBusy=true;
+  const button=$('countConfirmSave'),status=$('countConfirmStatus');
+  btnBusy(button,true,'Registrando…');$('countConfirmCancel').disabled=true;
+  status.hidden=false;$('countConfirmStatusText').textContent='Gravando as informações da ficha. Não feche esta janela.';
+  try{
+    // O request_id permanece estável caso uma falha de rede exija repetir a confirmação.
+    const saved=await api('salvarContagem',{...d,request_id:state.requestId},180000);
+    $('lastSaved').hidden=false;
+    $('lastSaved').textContent=(saved.duplicado?'Lançamento já recebido anteriormente.':'Lançamento registrado com sucesso!')
+      +' Etiqueta Nº '+d.etiqueta+' · Data '+d.data_contagem+' · Conferentes '+d.primeiro_conferente+' e '+d.segundo_conferente
+      +' · Produto '+d.codigo+' · '+d.quantidade+' '+p.um+' · Rua '+(d.rua||'—')
+      +' / Zona '+(d.zona||'—')+' / Posição '+(d.posicao||'—')+' / Palete '+(d.palete||'—')+'.';
+    state.dashboard=null;state.requestId=null;pendingCount=null;
+    $('countConfirmDialog').close();
     $('quantity').value='';$('countTag').value='';$('countTag').focus();
-}catch(err){toast(err.message,'error');}finally{btnBusy(button,false);button.disabled=!state.product;}}
+    toast(saved.duplicado?'Contagem anteriormente registrada. Nenhum lançamento duplicado.':'Ficha registrada e auditada com sucesso!','success');
+  }catch(err){
+    $('countConfirmStatusText').textContent='Não foi possível confirmar o resultado. Confira a mensagem antes de tentar novamente.';
+    toast('Contagem não confirmada: '+err.message,'error');
+  }finally{
+    countDialogBusy=false;btnBusy(button,false);$('countConfirmCancel').disabled=false;
+    if(!$('countConfirmDialog').open)status.hidden=true;
+  }
+}
 function fmtDate(x){const d=new Date(x);return Number.isFinite(d.getTime())?d.toLocaleString('pt-BR',{timeZone:'America/Manaus'}):String(x||'');}
 
 /** Velocímetro global — porcentagem de SKUs (código+centro+depósito) com algum lançamento. */
@@ -542,6 +607,70 @@ async function exportarLocalizacoes(button){
   finally{btnBusy(button,false);}
 }
 
+/** Clique na situação do depósito: listas de recontagem e relatórios, sem coluna extra. */
+let sectorDialogRow=null,sectorNextRound=0,sectorExportBusy=false;
+function proximaListaDoSetor(row){
+  const numero=Number(row.numero),divergentes=Number(row.divergentes_na_rodada)||0;
+  if(row.status==='ENCERRADA'&&numero<3&&divergentes>0)return numero+1;
+  // Mesmo após abrir a rodada seguinte, a lista cega da rodada atual continua disponível.
+  if(row.status==='ABERTA'&&numero>1)return numero;
+  return 0;
+}
+function mostrarResultadoSetor(centro,deposito){
+  if(!canSupervise()||sectorExportBusy)return;
+  const row=state.dashboard?.setores?.find(r=>String(r.centro)===centro&&String(r.deposito)===deposito);
+  if(!row){toast('Atualize os dados da Supervisão e tente novamente.','error');return;}
+  sectorDialogRow=row;
+  const display=sectorRecommendation(row);
+  $('sectorResultTitle').textContent=display.texto;
+  $('sectorResultDescription').textContent='Confira as opções do centro e depósito selecionados. A lista da próxima rodada contém apenas códigos divergentes, sem quantidades SAP.';
+  $('sectorResultContext').innerHTML='<strong>Centro '+safe(row.centro)+' · Depósito '+safe(row.deposito||'Não informado')+'</strong>'
+    +'<span>'+safe(row.numero)+'ª contagem · '+safe(row.status)+'</span>';
+  const n=proximaListaDoSetor(row);
+  const total=n===2?Number(row.exportacao_segunda)||0:n===3?Number(row.exportacao_terceira)||0:0;
+  sectorNextRound=n&&total>0?n:0;
+  $('sectorNextSection').hidden=!sectorNextRound;
+  if(sectorNextRound){
+    $('sectorNextLabel').textContent='Lista para '+sectorNextRound+'ª contagem · '+num(total)+' produtos';
+    $('sectorNextDownload').textContent='Baixar lista da '+sectorNextRound+'ª contagem · CSV';
+  }
+  const rodadas=Array.isArray(row.relatorios_rodadas)?row.relatorios_rodadas:[];
+  $('sectorReportsSection').hidden=!(rodadas.length||row.relatorio_final_disponivel);
+  $('sectorReportControls').hidden=!rodadas.length;
+  $('sectorReportRound').innerHTML=rodadas.map(x=>
+    '<option value="'+Number(x.numero)+'">'+Number(x.numero)+'ª contagem encerrada</option>'
+  ).join('');
+  $('sectorFinalDownload').hidden=!row.relatorio_final_disponivel;
+  $('sectorNoExports').hidden=Boolean(sectorNextRound||rodadas.length||row.relatorio_final_disponivel);
+  $('sectorResultDialog').showModal();
+  (sectorNextRound?$('sectorNextDownload'):rodadas.length?$('sectorReportDownload'):
+    row.relatorio_final_disponivel?$('sectorFinalDownload'):$('sectorResultClose')).focus();
+}
+function fecharResultadoSetor(){
+  if(sectorExportBusy)return;
+  $('sectorResultDialog').close();sectorDialogRow=null;sectorNextRound=0;
+}
+async function baixarListaDoSetor(){
+  if(!sectorDialogRow||!sectorNextRound||sectorExportBusy)return;
+  const row=sectorDialogRow,numero=sectorNextRound,button=$('sectorNextDownload');
+  sectorExportBusy=true;
+  btnBusy(button,true,'Preparando lista…');$('sectorResultClose').disabled=true;
+  try{
+    const lista=await api('exportarListaRecontagem',{numero,centro:row.centro,deposito:row.deposito},180000);
+    if(!Array.isArray(lista.itens)||!lista.itens.length)throw Error('Nenhum material elegível para recontagem.');
+    gerarCsvRecontagem(lista);
+    toast('Lista da '+numero+'ª contagem exportada: '+num(lista.itens.length)+' materiais.','success');
+  }catch(err){toast('Lista de recontagem: '+err.message,'error');}
+  finally{sectorExportBusy=false;btnBusy(button,false);$('sectorResultClose').disabled=false;}
+}
+function baixarRelatorioDoSetor(tipo){
+  const row=sectorDialogRow;
+  if(!row||sectorExportBusy)return;
+  const numero=tipo==='RODADA'?Number($('sectorReportRound').value):undefined;
+  const button=tipo==='RODADA'?$('sectorReportDownload'):$('sectorFinalDownload');
+  return exportarRelatorioInventario(tipo,row.centro,row.deposito,numero,button);
+}
+
 function pintarTabelaSupervisao(data){
   const setores=(data.setores||[]).filter(r=>String(r.centro)===state.supervisionCenter);
   $('sectorsBody').innerHTML=setores.length?setores.map(r=>{
@@ -554,20 +683,10 @@ function pintarTabelaSupervisao(data){
       :r.status==='ENCERRADA'
       ?`<div class="round-actions">${r.numero<3&&hasDifferences?`<button class="btn secondary action-small" data-open="${safe(r.centro)}|${safe(r.deposito)}">Próxima rodada</button>`:''}${r.pode_reabrir?`<button class="btn outline-reopen action-small" data-reopen="${safe(r.rodada_id)}" title="Reabrir a contagem mantendo o histórico">Reabrir</button>`:''}${!r.pode_reabrir&&(!hasDifferences||r.numero===3)?'<span class="tiny">Concluído</span>':''}</div>`:'—';
 
-    const reportRounds=Array.isArray(r.relatorios_rodadas)?r.relatorios_rodadas:[];
-    const reportOptions=reportRounds.map(z=>'<option value="'+Number(z.numero)+'">'+Number(z.numero)+'ª contagem</option>').join('');
-    const reportList=reportRounds.length
-      ?'<div class="report-round-action"><select class="report-round-select" aria-label="Selecione a rodada encerrada">'+reportOptions+'</select>'
-       +'<button type="button" class="btn secondary action-small" data-report-kind="RODADA" data-report-center="'+safe(r.centro)+'" data-report-depot="'+safe(r.deposito)+'" title="Exporta apenas os itens desta rodada">Exportar rodada</button></div>'
-      :'<span class="tiny">Aguarde o encerramento</span>';
-    const reportFinal=r.relatorio_final_disponivel
-      ?'<button type="button" class="btn report-final-btn action-small" data-report-kind="FINAL" data-report-center="'+safe(r.centro)+'" data-report-depot="'+safe(r.deposito)+'" title="Inclui o último resultado de todos os produtos deste setor">Exportar relatório final</button>'
-      :'';
-    const reports='<div class="sector-reports">'+reportList+reportFinal+'</div>';
     const progress=`<div class="sector-progress" role="progressbar" aria-label="Progresso da ${num(r.numero)}ª contagem" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><div class="sector-progress-top"><strong>${percent}%</strong><span>${num(r.produtos_registrados)} de ${num(r.total_alvo)} produtos</span></div><div class="sector-progress-track"><div class="sector-progress-fill ${percent===100?'complete':''}" style="width:${percent}%"></div></div></div>`;
-    const recommendation=`<div class="sector-recommendation ${indicador.classe}"><span class="sector-recommendation-dot" aria-hidden="true"></span><div><strong>${safe(indicador.texto)}</strong><small>${safe(indicador.nota)}</small></div></div>`;
-    return `<tr><td><strong>${safe(r.centro)}</strong></td><td>${safe(r.deposito)}</td><td>${safe(r.numero)}ª</td><td><span class="tag ${r.status==='ABERTA'?'warn':'end'}">${safe(r.status)}</span></td><td>${progress}</td><td>${num(r.faltando_total)}${r.faltando_total?'<div class="tiny">Ex.: '+safe(r.produtos_faltando.slice(0,3).join(', '))+'</div>':''}</td><td>${recommendation}</td><td>${reports}</td><td>${action}</td></tr>`;
-  }).join(''):'<tr><td colspan="9" class="empty">Nenhum setor disponível.</td></tr>';
+    const recommendation=`<button type="button" class="sector-recommendation sector-result-trigger ${indicador.classe}" data-sector-result-center="${safe(r.centro)}" data-sector-result-depot="${safe(r.deposito)}" aria-label="Abrir listas e relatórios do centro ${safe(r.centro)}, depósito ${safe(r.deposito)}: ${safe(indicador.texto)}"><span class="sector-recommendation-dot" aria-hidden="true"></span><span class="sector-result-content"><strong>${safe(indicador.texto)}</strong><small>${safe(indicador.nota)}</small><small class="sector-result-action">Ver listas e relatórios <span aria-hidden="true">↗</span></small></span></button>`;
+    return `<tr><td><strong>${safe(r.centro)}</strong></td><td>${safe(r.deposito)}</td><td>${safe(r.numero)}ª</td><td><span class="tag ${r.status==='ABERTA'?'warn':'end'}">${safe(r.status)}</span></td><td>${progress}</td><td>${num(r.faltando_total)}${r.faltando_total?'<div class="tiny">Ex.: '+safe(r.produtos_faltando.slice(0,3).join(', '))+'</div>':''}</td><td>${recommendation}</td><td>${action}</td></tr>`;
+  }).join(''):'<tr><td colspan="8" class="empty">Nenhum setor disponível.</td></tr>';
 
 }
 
@@ -765,6 +884,16 @@ document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>swit
 $('searchForm').addEventListener('submit',searchProduct);$('countForm').addEventListener('submit',saveCount);
 $('sectorSelect').addEventListener('change',()=>{resetProduct();$('productCode').value='';hideSuggestions();preloadCatalog();});$('productCode').addEventListener('input',()=>{resetProduct();queueSuggestions();});
 $('countForm').addEventListener('input',()=>state.requestId=null);
+$('posicao').addEventListener('input',e=>{
+  const old=e.target.value,upper=old.toUpperCase();
+  if(old!==upper)e.target.value=upper;
+});
+$('countConfirmSave').addEventListener('click',confirmarContagem);
+$('countConfirmCancel').addEventListener('click',fecharConfirmacaoContagem);
+$('countConfirmDialog').addEventListener('cancel',e=>{
+  if(countDialogBusy)e.preventDefault();
+  else pendingCount=null;
+});
 $('filterForm').addEventListener('submit',async e=>{e.preventDefault();await refreshDashboard('Filtrando endereços…');});
 $('refreshDashboard').addEventListener('click',refreshDashboard);
 $('dashboardCenterButtons').addEventListener('click',e=>{
@@ -786,17 +915,22 @@ $('productCode').addEventListener('focus',()=>{if($('productCode').value.trim().
 $('productSuggestions').addEventListener('pointerdown',e=>{const b=e.target.closest('[data-suggest-code]');if(!b)return;e.preventDefault();pickSuggestion(b.dataset.suggestCode);});
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('.product-lookup'))hideSuggestions();});
 $('sectorsBody').addEventListener('click',e=>{
-  const b=e.target.closest('button');
-  if(!b)return;
-  if(b.dataset.reportKind){
-    const {reportKind:tipo,reportCenter:centro,reportDepot:deposito}=b.dataset;
-    const numero=tipo==='RODADA'?Number(b.closest('tr')?.querySelector('.report-round-select')?.value):undefined;
-    exportarRelatorioInventario(tipo,centro,deposito,numero,b);
+  const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.sectorResultCenter!==undefined){
+    mostrarResultadoSetor(b.dataset.sectorResultCenter,b.dataset.sectorResultDepot);
     return;
   }
   if(b.dataset.close)doClose(b.dataset.close);
   if(b.dataset.open)doOpen(b.dataset.open);
   if(b.dataset.reopen)doReopen(b.dataset.reopen,b);
+});
+$('sectorResultClose').addEventListener('click',fecharResultadoSetor);
+$('sectorNextDownload').addEventListener('click',baixarListaDoSetor);
+$('sectorReportDownload').addEventListener('click',()=>baixarRelatorioDoSetor('RODADA'));
+$('sectorFinalDownload').addEventListener('click',()=>baixarRelatorioDoSetor('FINAL'));
+$('sectorResultDialog').addEventListener('cancel',event=>{
+  if(sectorExportBusy)event.preventDefault();
+  else{sectorDialogRow=null;sectorNextRound=0;}
 });
 $('exportLocator').addEventListener('click',e=>exportarLocalizacoes(e.currentTarget));
 $('userForm').addEventListener('submit',doCreateUser);
