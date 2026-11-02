@@ -1,5 +1,17 @@
 # Inventário Friovix — GitHub Pages + Google Apps Script
 
+## Atualização v13 — Unidade de Medida na Contagem
+
+Na aba **Contagem**, o campo obrigatório **Unidade de Medida** aparece como lista suspensa **à esquerda de Quantidade Contada**. As opções são as UMs **distintas** encontradas na base SAP do inventário ativo, incluindo todos os centros e depósitos; não são valores digitados livremente.
+
+- O backend devolve as UMs junto ao catálogo de produtos já consultado por centro/depósito, sem uma chamada adicional ou divulgação de saldos SAP.
+- Ao consultar um produto, sua UM cadastrada na base é **pré-selecionada**. Se o catálogo ainda estiver carregando, a UM do próprio produto já aparece; quando a lista completa chega, as opções são atualizadas sem apagar a seleção.
+- A unidade escolhida aparece no **popup de confirmação** e é enviada no lançamento. O backend só aceita a UM **igual à cadastrada no SAP para aquele Código + Centro + Depósito**, evitando conversões implícitas de quantidade (por exemplo, UN versus KG). A UM também entra na **auditoria do lançamento**.
+- O sistema continua usando a UM da base para decidir a precisão: unidades inteiras como UN não aceitam frações; KG pode aceitar até três casas decimais. A quantidade física e o cálculo da diferença não mudam.
+- **Nenhuma coluna adicional é necessária** na aba `CONTAGENS`, porque a UM oficial já existe na base SAP e fica validada em cada lançamento; não altere os registros ou as contagens antigas.
+
+**Ativação:** publique a versão mais recente de `apps-script/Code.gs` no projeto Apps Script existente (**Gerenciar implantações → Editar → Nova versão**) e atualize a página do GitHub Pages. `Bridge.html` permanece inalterado; **não execute `instalarProjeto`**. Valide com produtos de UMs diferentes em modo TESTE.
+
 ## Ajustes v12 — posição alfanumérica, confirmação do apontador e listas na Supervisão
 
 ### Posição física

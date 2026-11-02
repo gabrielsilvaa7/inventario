@@ -104,14 +104,22 @@ fail(()=>env.previsualizarAtualizacaoSAP({token:a}),/administrador/);
 fail(()=>env.atualizarBaseSAP({token:a,confirmacao:'ATUALIZAR BASE SAP'}),/administrador/);
 let etiquetaSequencia=0;
 const count=(t,code,qty,location={},depot='1',req,metadata={})=>env.salvarContagem({
- token:t,centro:'1025',deposito:depot,codigo:code,quantidade:qty,
+ token:t,centro:'1025',deposito:depot,codigo:code,quantidade:qty,um:code==='2000'?'KG':'UN',
  rua:location.rua??'',zona:location.zona??'',posicao:location.posicao??'',palete:location.palete??'',
  data_contagem:'2026-10-29',primeiro_conferente:'Maria Silva',segundo_conferente:'Pedro Alves',
  etiqueta:String(++etiquetaSequencia).padStart(6,'0'),...metadata,request_id:req||crypto.randomUUID()
 });
 // Carregamento único do catálogo para busca local: somente SKUs permitidos por setor/usuário.
 fail(()=>env.catalogoProdutos({token:'invalido',centro:'1025',deposito:'1'}),/Sessão/);
-assert.equal(env.catalogoProdutos({token:a,centro:'1025',deposito:'1'}).itens.length,3);
+const umCatalogo=env.catalogoProdutos({token:a,centro:'1025',deposito:'1'});
+assert.equal(umCatalogo.itens.length,3);
+assert.equal(umCatalogo.unidades_medida.join(','),'KG,UN','UMs do estoque ativo devem ser distintas e ordenadas');
+// Teste de uma UM que existe apenas em OUTRO depósito: deve aparecer no seletor.
+const linhaOutroDeposito=env.sh_('BASE_ESTOQUE').rows.find(row=>String(row[6])==='9');
+const umOutroDeposito=linhaOutroDeposito[4];
+linhaOutroDeposito[4]='CX';
+assert.equal(env.catalogoProdutos({token:a,centro:'1025',deposito:'1'}).unidades_medida.join(','),'CX,KG,UN');
+linhaOutroDeposito[4]=umOutroDeposito;
 assert.equal(env.catalogoProdutos({token:a,centro:'1025',deposito:'9'}).itens.length,1);
 assert.equal(env.catalogoProdutos({token:a,centro:'1025',deposito:'99'}).itens.length,0);
 fail(()=>env.filtrarAcompanhamento({token:a,acompanhamento:{centro:'1025',deposito:'1'}}),/supervisor/);
@@ -144,6 +152,9 @@ fail(()=>count(a,'1000','1,5',{rua:1,zona:1,posicao:1,palete:1}),/casa/);
 fail(()=>count(a,'1000','1',{rua:0,zona:1,posicao:1,palete:1}),/inteiro/);
 const l1={rua:3,zona:2,posicao:'A01001',palete:4},l2={rua:4,zona:2,posicao:'A10028',palete:1};
 fail(()=>count(a,'1000',1,{rua:3,zona:2,posicao:'A-01001',palete:4}),/Posição/);
+fail(()=>count(a,'1000',1,l1,'1',undefined,{um:'KG'}),/Unidade de Medida selecionada/);
+fail(()=>count(a,'1000',1,l1,'1',undefined,{um:''}),/Selecione a Unidade/);
+fail(()=>count(a,'2000',1,l1,'1',undefined,{um:'UN'}),/Unidade de Medida selecionada/);
 fail(()=>count(a,'1000',1,{rua:3,zona:2,posicao:'A 01001',palete:4}),/Posição/);
 fail(()=>count(a,'1000',1,{rua:3,zona:2,posicao:'A'.repeat(25),palete:4}),/Posição/);
 assert.equal(env.normalizarPosicao_('a01001'),'A01001');
@@ -159,6 +170,7 @@ const uuid=crypto.randomUUID();count(a,'1000',8,l1,'1',uuid);assert.equal(count(
 assert.equal(env.table_('CONTAGENS')[0].posicao,'A01001');
 assert.equal(env.table_('CONTAGENS')[0].rua,3);
 assert.equal(env.table_('CONTAGENS')[0].palete,4);
+assert.equal(env.table_('AUDITORIA').filter(x=>x.acao==='CONTAGEM_REGISTRADA')[0].detalhes.includes('"um":"UN"'),true,'UM validada também aparece na auditoria');
 assert.equal(sheetContagens.rows[0].length,18,'Novas colunas adicionadas sem reinstalar');
 assert.equal(sheetContagens.rows[0][17],'etiqueta');
 assert(/^0{1,5}\d{1,5}$/.test(env.table_('CONTAGENS')[0].etiqueta),'Zeros à esquerda preservados');
@@ -166,6 +178,7 @@ const etiquetaOriginal=env.table_('CONTAGENS')[0].etiqueta;
 fail(()=>count(a,'1000',1,l2,'1',undefined,{etiqueta:etiquetaOriginal}),/já lançada/);
 fail(()=>count(a,'2000',1,l1,'1',undefined,{etiqueta:etiquetaOriginal}),/outro produto/);
 count(a,'1000',1,l2);count(a,'2000','1,250',l1);
+assert(env.table_('AUDITORIA').some(x=>x.acao==='CONTAGEM_REGISTRADA'&&String(x.detalhes).includes('"um":"KG"')),'Contagem decimal usa a UM KG da base');
 assert.equal(env.painel({token}).metricas.etiquetas,3);
 assert.equal(env.filtrarAcompanhamento({token,acompanhamento:{centro:'1025',deposito:''}}).metricas.total,4);
 assert.equal(env.painel({token,acompanhamento:{centro:'1025',deposito:''}}).metricas.total,4);
@@ -504,4 +517,4 @@ fail(()=>env.limparDadosTeste({token,confirmacao:'APAGAR TESTES'}),/proibida/);
 assert.equal(env.table_('CONTAGENS').length,3);
 assert.equal(source.getSheetByName('Data').getLastRow(),5,'fonte SAP não deve mudar durante resets/ativação');
 env.sair({token});fail(()=>env.sessaoAtual({token}),/expirada|inválida/);
-console.log('OK: posições A01001/A10028 gravadas como texto, filtros alfanuméricos, validação do backend, contagens, etiquetas, recontagens, relatórios e demais testes de inventário.');
+console.log('OK: UMs distintas de toda a base, seleção obrigatória e validação contra a UM SAP; testes de contagem, etiquetas, recontagens, relatórios e inventário preservados.');

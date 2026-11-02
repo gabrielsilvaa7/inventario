@@ -1,7 +1,7 @@
 /* Inventário Friovix — Cliente GitHub Pages. Nenhum segredo é colocado neste arquivo. */
 'use strict';
 const $=id=>document.getElementById(id);
-const state={bridgeWindow:null,bridgeOrigin:'',channel:'',ready:false,pending:new Map(),token:sessionStorage.getItem('inventario_session')||'',usuario:null,context:null,product:null,dashboard:null,requestId:null,tab:'contagem',productPage:1,suggestionSequence:0,suggestionTimer:null,suggestions:[],suggestionActive:-1,catalogCache:new Map(),catalogPending:new Map(),catalogUnsupported:false,catalogSignature:'',dashboardLoading:false,dashboardQueued:'',followupSeq:0,followupTimer:null,sapBusy:false,sapPreview:null,counterPermissions:[],counterPermissionsLoading:false,supervisionCenter:''};
+const state={bridgeWindow:null,bridgeOrigin:'',channel:'',ready:false,pending:new Map(),token:sessionStorage.getItem('inventario_session')||'',usuario:null,context:null,product:null,dashboard:null,requestId:null,tab:'contagem',productPage:1,suggestionSequence:0,suggestionTimer:null,suggestions:[],suggestionActive:-1,catalogCache:new Map(),catalogPending:new Map(),catalogUnsupported:false,catalogSignature:'',dashboardLoading:false,dashboardQueued:'',followupSeq:0,followupTimer:null,sapBusy:false,sapPreview:null,counterPermissions:[],counterPermissionsLoading:false,supervisionCenter:'',unidadesMedida:[]};
 const safe=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const num=v=>new Intl.NumberFormat('pt-BR',{maximumFractionDigits:3}).format(Number(v)||0);
 const rotuloPerfil_=perfil=>({CONTADOR:'Apontador',APONTADOR:'Apontador',SUPERVISOR:'Supervisor',ADMIN:'Administrador'}[String(perfil)]||String(perfil));
@@ -65,7 +65,7 @@ function switchTab(tab){if((tab==='painel'||tab==='supervisao')&&!canSupervise()
 async function refreshContext(){
   const next=await api('carregarContexto');
   const signature=JSON.stringify([next.inventario?.id,(next.setores||[]).map(x=>[x.centro,x.deposito,x.rodada_id,x.status])]);
-  if(signature!==state.catalogSignature){state.catalogCache.clear();state.catalogPending.clear();state.catalogSignature=signature;}
+  if(signature!==state.catalogSignature){state.catalogCache.clear();state.catalogPending.clear();state.catalogSignature=signature;state.unidadesMedida=[];renderUnidadesMedida(state.product?.um||'');}
   if(state.sapPreview){state.sapPreview=null;atualizarBotoesSAP();}
   state.context=next;
   $('inventoryName').textContent='Controle físico de estoque';renderModeBadge(state.context.modo);
@@ -189,7 +189,22 @@ async function startOfficialInventory(){
   finally{btnBusy(b,false);}
 }
 function currentSector(){const val=$('sectorSelect').value;if(!val)throw Error('Selecione Centro e Depósito.');const [centro,deposito]=val.split('|');return {centro,deposito};}
-function resetProduct(){state.product=null;state.requestId=null;$('saveCount').disabled=true;$('countUnit').textContent='';$('productInfo').className='product-card muted';$('productInfo').textContent='Busque um produto no centro e depósito selecionados.';}
+/** Lista global de UMs devolvida pelo catálogo da base SAP ativa. */
+function renderUnidadesMedida(unitSelected=''){
+  const select=$('countUm'),selected=String(unitSelected||'').trim().toUpperCase();
+  const units=[...new Set([...state.unidadesMedida,selected].map(v=>String(v||'').trim().toUpperCase()).filter(Boolean))]
+    .sort((a,b)=>a.localeCompare(b,'pt-BR',{numeric:true}));
+  select.innerHTML='<option value="">Selecione a unidade...</option>'
+    +units.map(um=>'<option value="'+safe(um)+'">'+safe(um)+'</option>').join('');
+  select.disabled=!state.product;
+  select.value=selected;
+}
+function resetProduct(){
+  state.product=null;state.requestId=null;$('saveCount').disabled=true;
+  renderUnidadesMedida();
+  $('productInfo').className='product-card muted';
+  $('productInfo').textContent='Busque um produto no centro e depósito selecionados.';
+}
 function centrosDisponiveis(){
   return [...new Set((state.context?.setores||[]).map(x=>String(x.centro)))].sort((a,b)=>a.localeCompare(b,'pt-BR',{numeric:true}));
 }
@@ -262,8 +277,14 @@ function preloadCatalog(){
     .then(data=>{
       // Cada catálogo pertence a uma rodada e usuário específicos.
       const rows=(data.itens||[]).map(p=>({...p,codeSearch:foldText(p.codigo),nameSearch:foldText(p.descricao)}));
-      if(scope.key===scopeCatalog()?.key)state.catalogCache.set(scope.key,rows);
-      else if(state.catalogSignature)state.catalogCache.set(scope.key,rows);
+      if(scope.key===scopeCatalog()?.key){
+        state.catalogCache.set(scope.key,rows);
+        // A base SAP ativa fornece também as UMs distintas de todos os depósitos.
+        if(Array.isArray(data.unidades_medida)){
+          state.unidadesMedida=data.unidades_medida;
+          renderUnidadesMedida(state.product?.um||'');
+        }
+      }else if(state.catalogSignature)state.catalogCache.set(scope.key,rows);
       return rows;
     })
     .catch(err=>{
@@ -360,7 +381,7 @@ async function searchProduct(event){event.preventDefault();hideSuggestions();con
   const scope=currentSector();const codigo=$('productCode').value.trim();if(!codigo)throw Error('Informe o código do produto.');
   const product=await api('consultarProduto',{...scope,codigo});state.product=product;
   $('productInfo').className='product-card';$('productInfo').innerHTML=`<strong>${safe(product.descricao)}</strong><div class="meta">Código ${safe(product.codigo)} · Centro ${safe(product.centro)} · Depósito ${safe(product.deposito)} · Unidade ${safe(product.um)}</div><span class="pill">Rodada ${safe(product.rodada_numero)}</span>`;
-  $('countUnit').textContent='('+product.um+')';$('saveCount').disabled=false;$('quantity').focus();
+  renderUnidadesMedida(product.um);$('saveCount').disabled=false;$('quantity').focus();
 }catch(err){toast(err.message,'error');}finally{btnBusy(button,false);}}
 /** A gravação acontece exclusivamente após a confirmação da ficha exibida no modal. */
 let pendingCount=null,countDialogBusy=false;
@@ -372,9 +393,14 @@ function lerDadosContagem(){
   const d={...sector,codigo:produto.codigo,
     rua:$('rua').value.trim(),zona:$('zona').value.trim(),
     posicao:$('posicao').value.trim().toUpperCase(),palete:$('palete').value.trim(),
-    quantidade:$('quantity').value.trim(),data_contagem:$('countDate').value,
+    quantidade:$('quantity').value.trim(),um:$('countUm').value,
+    data_contagem:$('countDate').value,
     primeiro_conferente:$('firstChecker').value.trim(),segundo_conferente:$('secondChecker').value.trim(),
     etiqueta:$('countTag').value.trim()};
+  const expectedUm=String(produto.um||'').trim().toUpperCase();
+  if(!d.um)throw Error('Selecione a Unidade de Medida.');
+  if(!expectedUm||d.um!==expectedUm)
+    throw Error('A unidade escolhida deve ser '+(expectedUm||'a unidade cadastrada no SAP')+' para este produto.');
   const qty=d.quantidade.includes(',')?d.quantidade.replace(/\./g,'').replace(',','.'):d.quantidade;
   if(!/^(\d+(\.\d+)?)$/.test(qty))throw Error('Quantidade inválida. Use número positivo ou zero.');
   if(Number(qty)>0&&['rua','zona','posicao','palete'].some(k=>!d[k]))
@@ -409,7 +435,7 @@ function saveCount(event){
       ['Produto',p.codigo+' — '+p.descricao],['Centro / Depósito',d.centro+' / '+d.deposito],
       ['Rodada',String(p.rodada_numero)+'ª'],['Rua',d.rua||'—'],['Zona',d.zona||'—'],
       ['Posição',d.posicao||'—'],['Palete',d.palete||'—'],
-      ['Quantidade física',d.quantidade+' '+p.um]
+      ['Unidade de Medida',d.um],['Quantidade física',d.quantidade+' '+d.um]
     ];
     $('countConfirmDetails').innerHTML=fields.map(([name,value])=>
       '<div class="count-confirm-field"><span>'+safe(name)+'</span><strong>'+safe(value)+'</strong></div>'
@@ -436,7 +462,7 @@ async function confirmarContagem(){
     $('lastSaved').hidden=false;
     $('lastSaved').textContent=(saved.duplicado?'Lançamento já recebido anteriormente.':'Lançamento registrado com sucesso!')
       +' Etiqueta Nº '+d.etiqueta+' · Data '+d.data_contagem+' · Conferentes '+d.primeiro_conferente+' e '+d.segundo_conferente
-      +' · Produto '+d.codigo+' · '+d.quantidade+' '+p.um+' · Rua '+(d.rua||'—')
+      +' · Produto '+d.codigo+' · '+d.quantidade+' '+d.um+' · Rua '+(d.rua||'—')
       +' / Zona '+(d.zona||'—')+' / Posição '+(d.posicao||'—')+' / Palete '+(d.palete||'—')+'.';
     state.dashboard=null;state.requestId=null;pendingCount=null;
     $('countConfirmDialog').close();
@@ -874,7 +900,7 @@ async function changeCounterPermission(event){
   }catch(err){checkbox.checked=!permitido;toast('Permissão: '+err.message,'error');}
   finally{checkbox.disabled=false;row?.classList.remove('permission-saving');}
 }
-async function logout(){try{await api('sair');}catch{}state.token='';state.usuario=null;state.product=null;state.catalogCache.clear();state.catalogPending.clear();state.catalogSignature='';state.dashboard=null;sessionStorage.removeItem('inventario_session');show('loginPage');$('loginForm').reset();}
+async function logout(){try{await api('sair');}catch{}state.token='';state.usuario=null;state.product=null;state.catalogCache.clear();state.catalogPending.clear();state.catalogSignature='';state.unidadesMedida=[];renderUnidadesMedida();state.dashboard=null;sessionStorage.removeItem('inventario_session');show('loginPage');$('loginForm').reset();}
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const button=$('loginButton');btnBusy(button,true,'Autenticando...');try{
   const res=await bridgeCall('entrar',{usuario:$('loginUser').value.trim(),senha:$('loginPass').value});state.token=res.token;state.usuario=res.usuario;
   sessionStorage.setItem('inventario_session',res.token);$('loginPass').value='';await enterApp();toast('Bem-vindo(a), '+res.usuario.nome+'!','success');
@@ -884,6 +910,12 @@ document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>swit
 $('searchForm').addEventListener('submit',searchProduct);$('countForm').addEventListener('submit',saveCount);
 $('sectorSelect').addEventListener('change',()=>{resetProduct();$('productCode').value='';hideSuggestions();preloadCatalog();});$('productCode').addEventListener('input',()=>{resetProduct();queueSuggestions();});
 $('countForm').addEventListener('input',()=>state.requestId=null);
+$('countUm').addEventListener('change',()=>{
+  if(!state.product)return;
+  const expected=String(state.product.um||'').trim().toUpperCase();
+  if($('countUm').value&&$('countUm').value!==expected)
+    toast('A unidade do produto no SAP é '+expected+'. Selecione essa unidade para continuar.','error');
+});
 $('posicao').addEventListener('input',e=>{
   const old=e.target.value,upper=old.toUpperCase();
   if(old!==upper)e.target.value=upper;

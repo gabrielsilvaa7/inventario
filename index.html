@@ -74,7 +74,17 @@
                 <label>Posição<input id="posicao" type="text" inputmode="text" maxlength="24" pattern="[A-Za-z0-9]{1,24}" placeholder="Ex.: A01001" autocapitalize="characters" autocomplete="off"></label>
                 <label>Palete<input id="palete" type="number" min="1" step="1" placeholder="1" inputmode="numeric"></label>
               </div>
-              <label>Quantidade contada <span id="countUnit" class="tiny"></span><input id="quantity" type="text" inputmode="decimal" placeholder="Ex.: 2,350" required></label>
+              <div class="count-unit-quantity-row">
+                <label class="count-unit-label" for="countUm">Unidade de Medida
+                  <select id="countUm" name="unidade_medida" required disabled>
+                    <option value="">Selecione um produto...</option>
+                  </select>
+                </label>
+                <label class="count-quantity-label" for="quantity">Quantidade Contada
+                  <input id="quantity" type="text" inputmode="decimal" placeholder="Ex.: 2,350" required>
+                </label>
+              </div>
+              <p class="hint count-unit-hint">As unidades disponíveis vêm da base SAP. Ao buscar um produto, sua unidade cadastrada é selecionada automaticamente.</p>
               <p class="hint">Para um material não encontrado, informe quantidade <strong>0</strong>. Nesse caso, o endereço pode ficar em branco.</p>
               <button id="saveCount" type="submit" class="btn primary full" disabled>Registrar contagem</button>
             </form>

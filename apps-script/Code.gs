@@ -414,10 +414,16 @@ function catalogoProdutos(d){
   const u=auth_(d.token),inv=activeInventory_(),centro=str_(d.centro),deposito=str_(d.deposito);
   if(!centro)throw Error('Selecione o centro e o depósito antes de pesquisar.');
   const rodadas=sector_(inv.inventario_id,centro,deposito),rodada=rodadas[rodadas.length-1];
-  if(!rodada||rodada.status!=='ABERTA')return {rodada_id:rodada?rodada.rodada_id:'',itens:[]};
+  if(!rodada||rodada.status!=='ABERTA')return {rodada_id:rodada?rodada.rodada_id:'',itens:[],unidades_medida:[]};
   // Catálogo leva apenas as 7 colunas necessárias, em vez das 14 da base inteira.
   const sheet=sh_('BASE_ESTOQUE'),last=sheet.getLastRow();
   const rows=last>1?sheet.getRange(2,1,last-1,7).getValues():[];
+  // A consulta já percorre a base ativa: devolva somente as UMs distintas, inclusive
+  // as de outros depósitos, sem novas chamadas nem exposição de estoque SAP.
+  const unidades_medida=[...new Set(rows
+    .filter(row=>str_(row[0])===str_(inv.inventario_id))
+    .map(row=>norm_(row[4])).filter(Boolean))]
+    .sort((a,b)=>a.localeCompare(b,'pt-BR',{numeric:true}));
   const base=rows.filter(row=>str_(row[0])===str_(inv.inventario_id)&&str_(row[5])===centro&&str_(row[6])===deposito)
     .map(row=>({codigo:str_(row[2]),descricao:str_(row[3]),um:str_(row[4]),centro:str_(row[5]),deposito:str_(row[6])}));
   const alvos=Number(rodada.numero)===1?base:targetForRound_(rodada,base,resultadosAtivos_());
@@ -426,7 +432,7 @@ function catalogoProdutos(d){
     const anteriores=new Set(rodadas.filter(r=>Number(r.numero)<Number(rodada.numero)).map(r=>str_(r.rodada_id)));
     jaContados=new Set(table_('CONTAGENS').filter(c=>c.usuario===u.usuario&&anteriores.has(str_(c.rodada_id))).map(c=>str_(c.codigo)));
   }
-  return {rodada_id:rodada.rodada_id,itens:alvos.filter(p=>!jaContados.has(str_(p.codigo))).map(p=>({codigo:str_(p.codigo),descricao:str_(p.descricao),um:str_(p.um)}))};
+  return {rodada_id:rodada.rodada_id,unidades_medida,itens:alvos.filter(p=>!jaContados.has(str_(p.codigo))).map(p=>({codigo:str_(p.codigo),descricao:str_(p.descricao),um:str_(p.um)}))};
 }
 
 /** Acompanhamento leve: filtros/paginação sem remontar endereços, aprovações ou painel inteiro. */
@@ -481,8 +487,11 @@ function salvarContagem(d){return withLock_(()=>{
   const base=inventoryBase_(inv.inventario_id,center,depot),p=base.find(x=>str_(x.codigo)===code);
   if(!p)throw Error('Produto ausente na base SAP.');
   if(!targetForRound_(r,base,resultadosAtivos_()).some(x=>str_(x.codigo)===code))throw Error('Produto já conferido; não pode ser contado novamente.');
+  const um=norm_(p.um),umEscolhida=norm_(d.um);
+  if(!umEscolhida)throw Error('Selecione a Unidade de Medida do produto.');
+  if(!um||umEscolhida!==um)throw Error('Unidade de Medida selecionada não corresponde à base SAP deste produto: '+(um||'não cadastrada')+'.');
   const qty=noNeg_(decimal_(d.quantidade,'Quantidade'),'Quantidade');
-  const um=norm_(p.um),precision=['UN','UND','PÇ','PC','PCS','EA','CX','KIT'].includes(um)?0:3;
+  const precision=['UN','UND','PÇ','PC','PCS','EA','CX','KIT'].includes(um)?0:3;
   if(Math.abs(qty*Math.pow(10,precision)-Math.round(qty*Math.pow(10,precision)))>0.000001)throw Error('Unidade '+um+' aceita no máximo '+precision+' casa(s) decimal(is).');
   if(qty>0&&['rua','zona','posicao','palete'].some(k=>str_(d[k])===''))throw Error('Informe Rua, Zona, Posição e Palete.');
   // Rua, Zona e Palete permanecem numéricos. Posição é um identificador alfanumérico, não um número.
@@ -509,7 +518,7 @@ function salvarContagem(d){return withLock_(()=>{
   const id=uuid_();appendMany_('CONTAGENS',[[id,req,r.rodada_id,inv.inventario_id,code,center,depot,...location,qty,u.usuario,iso_(),dataContagem,primeiroConferente,segundoConferente,etiqueta]]);
   writeAudit_(u.usuario,'CONTAGEM_REGISTRADA','CONTAGEM',id,{codigo:code,centro:center,deposito:depot,rodada:Number(r.numero),quantidade:qty,
     rua:location[0],zona:location[1],posicao:location[2],palete:location[3],
-    data_contagem:dataContagem,primeiro_conferente:primeiroConferente,segundo_conferente:segundoConferente,etiqueta});
+    data_contagem:dataContagem,primeiro_conferente:primeiroConferente,segundo_conferente:segundoConferente,etiqueta,um});
   return {ok:true,duplicado:false,lancamento_id:id};
 });}
 /** Progresso global: cada Código + Centro + Depósito conta apenas uma vez, inclusive contagem zero.

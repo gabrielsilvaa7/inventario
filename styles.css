@@ -323,3 +323,12 @@
  .count-confirm-dialog,.sector-result-dialog{padding:20px}
 }
 @media(prefers-reduced-motion:reduce){.sector-result-trigger{transition:none}.sector-result-trigger:hover:not(:disabled){transform:none}}
+
+/* v13 — Unidade de Medida à esquerda da Quantidade Contada. */
+.count-unit-quantity-row{display:grid;grid-template-columns:minmax(155px,220px) minmax(0,1fr);align-items:end;gap:14px}
+.count-unit-quantity-row label{min-width:0}
+.count-unit-quantity-row select{font-weight:750;color:#214462;min-height:48px}
+.count-unit-quantity-row select:disabled{background:#f0f4f8;color:#7b899a}
+.count-unit-quantity-row input{min-height:48px;font-variant-numeric:tabular-nums}
+.count-unit-hint{margin-top:-7px}
+@media(max-width:520px){.count-unit-quantity-row{grid-template-columns:minmax(120px,43%) minmax(0,1fr);gap:10px}.count-unit-quantity-row select,.count-unit-quantity-row input{font-size:.91rem}}
