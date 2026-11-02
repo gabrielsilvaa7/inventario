@@ -17,7 +17,7 @@
   <section id="loginPage" class="auth-page" hidden>
     <div class="auth-card">
       <div class="brand-icon">▦</div><div class="eyebrow">CONTROLE DE ESTOQUE</div>
-      <h1>Inventário Friovix</h1><p>Entre com as credenciais fornecidas pelo supervisor.</p>
+      <h1>Inventário Friovix</h1>
       <form id="loginForm" class="stack">
         <label>Usuário<input name="usuario" id="loginUser" placeholder="Ex.: JOAO.SILVA" autocomplete="username" required minlength="3"></label>
         <label>Senha<input name="senha" id="loginPass" type="password" placeholder="Sua senha" autocomplete="current-password" required></label>
@@ -41,33 +41,31 @@
       </nav>
 
       <section class="page active" id="tab-contagem">
-        <div class="heading"><div><div class="eyebrow">APONTAMENTO DAS FICHAS FÍSICAS</div><h2>Registrar material</h2><p>Transcreva as informações da etiqueta preenchida pela dupla de conferentes. O apontador registra os dados no sistema e cada ficha fica no histórico.</p></div></div>
+        <div class="heading"><div><div class="eyebrow">CONTAGEM</div><h2>Registrar material</h2><p>Transcreva a ficha de contagem.</p></div></div>
         <div class="two-col">
           <article class="panel">
             <h3>Identificação</h3>
             <form id="searchForm" class="stack">
               <label>Centro e depósito<select id="sectorSelect" required><option value="">Selecione um setor...</option></select></label>
-              <label for="productCode">Código ou descrição do produto</label>
+              <label for="productCode">Produto</label>
               <div class="product-lookup">
-                <div class="input-action"><input id="productCode" placeholder="Digite pelo menos 2 caracteres" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="productSuggestions" required><button type="submit" class="btn secondary">Buscar</button></div>
+                <div class="input-action"><input id="productCode" placeholder="Código ou descrição" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="productSuggestions" required><button type="submit" class="btn secondary">Buscar</button></div>
                 <div id="productSuggestions" class="suggestions" role="listbox" aria-label="Sugestões de produtos" hidden></div>
               </div>
-              <p class="hint">A pesquisa mostra apenas materiais do centro e depósito selecionados que podem ser contados na rodada atual.</p>
             </form>
-            <div id="productInfo" class="product-card muted">Selecione o setor e procure um material para iniciar a contagem.</div>
+            <div id="productInfo" class="product-card muted">Selecione um setor e busque o produto.</div>
           </article>
           <article class="panel">
-            <h3>Dados da ficha e quantidade física</h3>
+            <h3>Dados da ficha</h3>
             <form id="countForm" class="stack">
               <div class="count-sheet-details">
-                <label class="count-tag-field">Nº da etiqueta de contagem
+                <label class="count-tag-field">Nº da etiqueta
                   <input id="countTag" type="text" inputmode="numeric" maxlength="12" pattern="[0-9]{1,12}" placeholder="Ex.: 000001" autocomplete="off" required>
                 </label>
-                <label>Data da contagem<input id="countDate" type="date" required></label>
-                <label>1º Conferente<input id="firstChecker" type="text" maxlength="120" minlength="2" placeholder="Nome de quem conferiu fisicamente" autocomplete="off" required></label>
-                <label>2º Conferente<input id="secondChecker" type="text" maxlength="120" minlength="2" placeholder="Nome do segundo conferente" autocomplete="off" required></label>
+                <label>Data<input id="countDate" type="date" required></label>
+                <label>1º Conferente<input id="firstChecker" type="text" maxlength="120" minlength="2" placeholder="Nome do conferente" autocomplete="off" required></label>
+                <label>2º Conferente<input id="secondChecker" type="text" maxlength="120" minlength="2" placeholder="Nome do conferente" autocomplete="off" required></label>
               </div>
-              <p class="hint count-sheet-hint">Os conferentes são a dupla que realizou a contagem no estoque. O usuário autenticado é o apontador responsável pela digitação. A mesma etiqueta pode reaparecer em rodadas posteriores do mesmo produto, mas não pode ser lançada duas vezes na mesma rodada.</p>
               <div class="grid-4">
                 <label>Rua<input id="rua" type="number" min="1" step="1" placeholder="1" inputmode="numeric"></label>
                 <label>Zona<input id="zona" type="number" min="1" step="1" placeholder="1" inputmode="numeric"></label>
@@ -84,8 +82,7 @@
                   <input id="quantity" type="text" inputmode="decimal" placeholder="Ex.: 2,350" required>
                 </label>
               </div>
-              <p class="hint count-unit-hint">As unidades disponíveis vêm da base SAP. Ao buscar um produto, sua unidade cadastrada é selecionada automaticamente.</p>
-              <p class="hint">Para um material não encontrado, informe quantidade <strong>0</strong>. Nesse caso, o endereço pode ficar em branco.</p>
+              <p class="hint count-zero-hint">Não encontrou? Informe <strong>0</strong>; endereço opcional.</p>
               <button id="saveCount" type="submit" class="btn primary full" disabled>Registrar contagem</button>
             </form>
           </article>
@@ -94,10 +91,10 @@
       </section>
 
       <section class="page" id="tab-painel">
-        <div class="heading inline"><div><div class="eyebrow">INDICADORES</div><h2>Dashboard de inventário</h2><p>Contagens e localização de materiais por endereço físico.</p></div><div class="dashboard-actions"><span id="dashboardUpdatedAt" class="tiny" aria-live="polite">Aguardando primeira atualização</span><button class="btn secondary" id="refreshDashboard" type="button">Atualizar</button></div></div>
+        <div class="heading inline"><div><div class="eyebrow">INDICADORES</div><h2>Dashboard</h2></div><div class="dashboard-actions"><span id="dashboardUpdatedAt" class="tiny" aria-live="polite">Aguardando primeira atualização</span><button class="btn secondary" id="refreshDashboard" type="button">Atualizar</button></div></div>
         <div id="dashboardStatus" class="operation-status" role="status" aria-live="polite" hidden><span class="mini-spinner" aria-hidden="true"></span><span id="dashboardStatusText">Atualizando informações do inventário…</span></div>
         <article class="panel dashboard-scope-panel">
-          <div class="dashboard-scope-title"><strong>Centro e depósitos do inventário</strong><span>Selecione 1025 ou 1026 para visualizar todos os depósitos e resultados do centro. É possível refinar por depósito abaixo.</span></div>
+          <div class="dashboard-scope-title"><strong>Filtros</strong></div>
           <div class="followup-filters">
             <div class="center-selector-wrap"><span class="center-label">Centro</span><div id="dashboardCenterButtons" class="center-segmented" role="group" aria-label="Selecione o centro do Dashboard"></div><input type="hidden" id="dashboardCenter" value=""></div>
             <label>Depósito<select id="dashboardDepot"><option value="">Todos os depósitos</option></select></label>
@@ -108,9 +105,7 @@
         <div class="stats" id="stats"></div>
         <article class="panel gauge-panel" aria-label="Evolução da contagem por produto nos filtros selecionados">
           <div class="gauge-intro">
-            <div class="eyebrow">EVOLUÇÃO DO CENTRO SELECIONADO</div>
-            <h3>Produtos contados nos depósitos selecionados</h3>
-            <p>Percentual de produtos registrados no centro e depósitos selecionados, não de unidades. Lançamentos com quantidade zero também contam; várias contagens do mesmo produto não duplicam o progresso.</p>
+            <h3>Progresso da contagem</h3>
           </div>
           <div class="gauge-visual" aria-live="polite">
             <svg viewBox="0 0 240 138" class="gauge-svg" aria-hidden="true">
@@ -126,10 +121,10 @@
           </div>
         </article>
         <article class="panel progress-panel">
-          <div class="panel-head"><div><h3>Acompanhamento de produtos</h3><p>Resultado consolidado após o encerramento de cada rodada, com progresso por centro e depósito.</p></div></div>
+          <div class="panel-head"><div><h3>Acompanhamento de produtos</h3></div></div>
 
           <div id="recountExportPanel" class="recount-export-panel" hidden>
-            <div class="recount-export-copy"><strong>Listas de recontagem</strong><span id="recountExportHint">Disponíveis depois que a rodada anterior for encerrada com divergências. As listas não incluem o saldo SAP.</span></div>
+            <div class="recount-export-copy"><strong>Recontagem</strong><span id="recountExportHint">Lista sem saldo SAP.</span></div>
             <div class="recount-export-buttons">
               <button type="button" class="btn secondary" id="exportRound2" hidden disabled>Exportar para 2ª contagem</button>
               <button type="button" class="btn secondary" id="exportRound3" hidden disabled>Exportar para 3ª contagem</button>
@@ -138,16 +133,16 @@
           <div id="followupLoading" class="operation-status secondary-status" role="status" aria-live="polite" hidden><span class="mini-spinner" aria-hidden="true"></span><span>Consultando produtos e rodadas…</span></div>
           <div class="progress-overview" id="progressOverview" aria-live="polite"></div>
           <div class="round-legend" aria-label="Legenda das contagens">
-            <span><i class="round-dot passed"></i> Estoque conferido</span>
-            <span><i class="round-dot warning"></i> Segunda / Terceira contagem</span>
-            <span><i class="round-dot failed"></i> Divergência de Estoque</span>
+            <span><i class="round-dot passed"></i> Batendo</span>
+            <span><i class="round-dot warning"></i> Recontagem</span>
+            <span><i class="round-dot failed"></i> Divergente</span>
             <span><i class="round-dot active"></i> Em contagem</span>
           </div>
           <div class="table-wrap"><table class="followup-table"><thead><tr><th>Código</th><th>Descrição do produto</th><th>Centro</th><th>Depósito</th><th>1ª contagem</th><th>2ª contagem</th><th>3ª contagem</th><th>Situação final</th></tr></thead><tbody id="followupBody"><tr><td colspan="8" class="empty">Aguardando dados...</td></tr></tbody></table></div>
           <div class="followup-pagination"><span id="followupCount" class="tiny"></span><div><button type="button" class="btn secondary small" id="followupPrev" disabled>Anterior</button><span id="followupPage" class="tiny">Página 1</span><button type="button" class="btn secondary small" id="followupNext" disabled>Próxima</button></div></div>
         </article>
         <article class="panel">
-          <div class="panel-head locator-panel-head"><div><h3>Localizador de materiais</h3><p>Último endereço físico de cada material. A exportação respeita os filtros abaixo e inclui todos os endereços encontrados, mesmo além dos 400 exibidos.</p></div><button type="button" class="btn secondary locator-export-button" id="exportLocator">Exportar localizações · CSV</button></div>
+          <div class="panel-head locator-panel-head"><div><h3>Localizador de materiais</h3></div><button type="button" class="btn secondary locator-export-button" id="exportLocator">Exportar localizações · CSV</button></div>
           <form id="filterForm" class="filter-grid">
             <label>Código<input id="filterCode" placeholder="Código SAP"></label>
             <label>Centro<input id="filterCenter" placeholder="1025"></label>
@@ -166,40 +161,38 @@
 
       <section class="page" id="tab-supervisao">
         <div class="center-supervision-heading"><strong>Visualizar centro</strong><div id="supervisionCenterButtons" class="center-segmented" role="group" aria-label="Selecione o centro da Supervisão"></div></div>
-        <div class="heading"><div><div class="eyebrow">GESTÃO DE RODADAS</div><h2>Supervisão</h2><p>Gerencie o encerramento das rodadas e exporte relatórios por centro e depósito. O relatório final reúne o último resultado válido de cada produto quando o estoque estiver batendo ou após a 3ª contagem. Reaberturas exigem justificativa e preservam o histórico.</p></div></div>
-        <article class="panel"><div class="panel-head"><div><h3>Status por centro e depósito</h3><p class="hint">A evolução considera produtos distintos da rodada atual. Clique na indicação da coluna <strong>Próxima etapa / Resultado</strong> para baixar a lista da próxima contagem ou os relatórios encerrados daquele depósito.</p></div></div><div class="table-wrap"><table class="sector-table"><thead><tr><th>Centro</th><th>Depósito</th><th>Rodada</th><th>Status</th><th>Progresso da contagem</th><th>Faltantes</th><th>Próxima etapa / Resultado</th><th>Ação</th></tr></thead><tbody id="sectorsBody"></tbody></table></div></article>
-        <article class="panel report-guide"><div class="panel-head"><div><h3>Listas e relatórios de contagem</h3><p class="hint">Clique na situação de cada depósito para obter a lista de materiais que precisarão da 2ª ou 3ª conferência. Os resultados das rodadas já encerradas e o relatório final também ficam disponíveis nessa janela, sem alterar o saldo SAP.</p></div></div></article>
+        <div class="heading"><div><h2>Supervisão</h2></div></div>
+        <article class="panel"><div class="panel-head"><div><h3>Status por depósito</h3><p class="hint">Clique no resultado para baixar listas e relatórios.</p></div></div><div class="table-wrap"><table class="sector-table"><thead><tr><th>Centro</th><th>Depósito</th><th>Rodada</th><th>Status</th><th>Progresso da contagem</th><th>Faltantes</th><th>Próxima etapa / Resultado</th><th>Ação</th></tr></thead><tbody id="sectorsBody"></tbody></table></div></article>
         <article class="panel" id="counterPermissionsPanel">
-          <div class="panel-head"><div><h3>Configurações operacionais</h3><p class="hint">Libere individualmente quais apontadores podem lançar o mesmo material em rodadas posteriores. A regra padrão é exigir outro apontador.</p></div><button type="button" id="refreshCounterPermissions" class="btn secondary small">Atualizar lista</button></div>
-          <label for="counterPermissionSearch" class="counter-search-label">Pesquisar apontador por nome ou usuário</label>
-          <input type="search" id="counterPermissionSearch" class="counter-search" placeholder="Digite o nome ou usuário do apontador…" autocomplete="off">
+          <div class="panel-head"><div><h3>Permissões de recontagem</h3><p class="hint">Autorize o mesmo apontador em outra rodada.</p></div><button type="button" id="refreshCounterPermissions" class="btn secondary small">Atualizar lista</button></div>
+          <label for="counterPermissionSearch" class="counter-search-label">Buscar apontador</label>
+          <input type="search" id="counterPermissionSearch" class="counter-search" placeholder="Nome ou usuário" autocomplete="off">
           <div id="counterPermissionStatus" class="operation-status secondary-status" role="status" aria-live="polite" hidden><span class="mini-spinner" aria-hidden="true"></span><span>Carregando permissões dos apontadores…</span></div>
-          <div id="counterPermissionList" class="counter-permission-list" aria-live="polite"><p class="hint">Abra a aba Supervisão para carregar a equipe.</p></div>
+          <div id="counterPermissionList" class="counter-permission-list" aria-live="polite"></div>
         </article>
       </section>
 
       <section class="page" id="tab-usuarios">
-        <div class="heading"><div><div class="eyebrow">ADMINISTRAÇÃO</div><h2>Administração</h2><p>Defina o ambiente de operação e gerencie as credenciais da equipe.</p></div></div>
+        <div class="heading"><div><h2>Administração</h2></div></div>
         <article class="panel" id="environmentPanel">
-          <div class="panel-head"><div><h3>Modo de operação</h3><p class="hint">Escolha o ambiente do inventário. Apenas administradores podem alterar o modo ou limpar dados de teste.</p></div><span class="mode-badge mode-test" id="adminModeBadge">TESTE</span></div>
+          <div class="panel-head"><div><h3>Modo de operação</h3></div><span class="mode-badge mode-test" id="adminModeBadge">TESTE</span></div>
           <div class="mode-choice" role="group" aria-label="Modo de operação">
             <button type="button" id="testModeButton" class="mode-option active" aria-pressed="true"><strong>Modo TESTE</strong><small>Simular contagens e todas as rodadas</small></button>
             <button type="button" id="officialModeButton" class="mode-option" aria-pressed="false"><strong>Modo OFICIAL</strong><small>Inventário real · limpeza bloqueada</small></button>
           </div>
           <p id="modeInfo" class="mode-description" aria-live="polite">Carregando status do ambiente...</p>
           <div class="environment-metrics" id="environmentMetrics"></div>
-          <div class="test-cleanup"><div><strong>Limpar registros de teste</strong><p class="hint">Remove contagens, resultados, aprovações e rodadas simuladas. Restaura a primeira rodada de cada centro e depósito; preserva a base SAP e os usuários.</p></div><button type="button" class="btn danger" id="clearTestDataButton" disabled>Apagar registros de teste</button></div>
-          <p class="hint">Ao ativar o modo OFICIAL, a alteração é permanente neste inventário e o backend bloqueia a limpeza, mesmo que alguém tente executar a função diretamente. Para começar oficialmente, os registros de teste devem ter sido limpos.</p>
+          <div class="test-cleanup"><div><strong>Limpar registros de teste</strong><p class="hint">Apaga contagens de teste; mantém SAP e usuários.</p></div><button type="button" class="btn danger" id="clearTestDataButton" disabled>Apagar registros de teste</button></div>
+          <p class="hint admin-safety-hint"><strong>Atenção:</strong> modo OFICIAL é permanente. Limpe os testes antes.</p>
         </article>
         <article class="panel" id="sapSyncPanel">
-          <div class="panel-head"><div><h3>Atualizar Base SAP</h3><p class="hint">Sincronize a planilha SAP ESTOQUE 1025-1026 somente após limpar as contagens de teste. A versão anterior fica preservada.</p></div><span class="tag" id="sapSyncMode">Modo TESTE</span></div>
+          <div class="panel-head"><div><h3>Atualizar Base SAP</h3><p class="hint">Após limpar os testes. Versão anterior preservada.</p></div><span class="tag" id="sapSyncMode">Modo TESTE</span></div>
           <div class="sap-sync-actions">
             <button type="button" class="btn secondary" id="sapPreviewButton">Verificar alterações</button>
             <button type="button" class="btn primary" id="sapApplyButton" disabled>Atualizar Base SAP</button>
           </div>
           <div id="sapSyncStatus" class="operation-status secondary-status" role="status" aria-live="polite" hidden><span class="mini-spinner" aria-hidden="true"></span><span id="sapSyncStatusText">Verificando planilha SAP…</span></div>
-          <div id="sapSyncPreview" class="sap-preview" aria-live="polite"><p class="hint">Clique em “Verificar alterações” para comparar o estoque SAP com a base atual do inventário.</p></div>
-          <p class="hint">Transferências entre depósitos aparecem como saída de um código/depósito e entrada em outro. No modo OFICIAL, a base permanece congelada. Nenhuma sincronização apaga usuários ou auditoria.</p>
+          <div id="sapSyncPreview" class="sap-preview" aria-live="polite"></div>
         </article>
         <h3>Gerenciar usuários</h3>
         <div class="two-col">
@@ -213,7 +206,7 @@
     <div class="round-dialog-head"><span class="round-dialog-icon" aria-hidden="true">✓</span><div><span class="eyebrow">CONFIRMAÇÃO DE SUPERVISÃO</span><h2 id="roundDialogTitle">Confirmar operação</h2></div></div>
     <p id="roundDialogText"></p>
     <div class="round-dialog-details"><div><span>Responsável</span><strong id="roundDialogUser">—</strong></div><div><span>Local</span><strong id="roundDialogSector">—</strong></div></div>
-    <label id="roundDialogReasonWrap" class="round-dialog-reason" hidden>Motivo da reabertura (obrigatório; mínimo de 10 caracteres)
+    <label id="roundDialogReasonWrap" class="round-dialog-reason" hidden>Motivo da reabertura (mín. 10 caracteres)
       <textarea id="roundDialogReason" rows="3" maxlength="500" placeholder="Explique por que a contagem precisa ser reaberta..."></textarea>
     </label>
     <div id="roundDialogStatus" class="operation-status secondary-status" role="status" aria-live="polite" hidden><span class="mini-spinner" aria-hidden="true"></span><span id="roundDialogStatusText">Processando a operação…</span></div>
@@ -221,7 +214,7 @@
   </dialog>
   <dialog id="countConfirmDialog" class="round-action-dialog count-confirm-dialog" aria-labelledby="countConfirmTitle" aria-describedby="countConfirmDescription">
     <div class="round-dialog-head"><span class="round-dialog-icon count-confirm-icon" aria-hidden="true">▤</span><div><span class="eyebrow">CONFERÊNCIA ANTES DO LANÇAMENTO</span><h2 id="countConfirmTitle">Confirmar contagem</h2></div></div>
-    <p id="countConfirmDescription">Compare os dados abaixo com a ficha de papel. O lançamento só será gravado depois que você confirmar.</p>
+    <p id="countConfirmDescription">Confira os dados da ficha antes de registrar.</p>
     <div class="count-confirm-details" id="countConfirmDetails"></div>
     <div id="countConfirmStatus" class="operation-status secondary-status" role="status" aria-live="polite" hidden><span class="mini-spinner" aria-hidden="true"></span><span id="countConfirmStatusText">Gravando contagem…</span></div>
     <div class="round-dialog-actions"><button type="button" class="btn secondary" id="countConfirmCancel">Voltar e corrigir</button><button type="button" class="btn primary" id="countConfirmSave">Confirmar e registrar</button></div>
@@ -232,7 +225,7 @@
     <div class="sector-result-context" id="sectorResultContext"></div>
     <section id="sectorNextSection" class="sector-export-section" hidden>
       <strong id="sectorNextLabel">Lista para próxima contagem</strong>
-      <p>Somente os produtos divergentes serão incluídos. A lista não revela o saldo SAP, para preservar a conferência independente.</p>
+      <p>Somente divergentes; sem saldo SAP.</p>
       <button type="button" id="sectorNextDownload" class="btn primary full">Baixar lista · CSV</button>
     </section>
     <section id="sectorReportsSection" class="sector-export-section" hidden>
@@ -240,7 +233,7 @@
       <div class="sector-report-controls" id="sectorReportControls"><select id="sectorReportRound" aria-label="Selecione a rodada concluída"></select><button type="button" class="btn secondary" id="sectorReportDownload">Baixar rodada</button></div>
       <button type="button" class="btn report-final-btn full" id="sectorFinalDownload" hidden>Baixar relatório final</button>
     </section>
-    <p id="sectorNoExports" class="hint" hidden>Não há lista de recontagem ou relatório disponível enquanto a rodada ainda está em andamento.</p>
+    <p id="sectorNoExports" class="hint" hidden>Nenhum arquivo disponível ainda.</p>
     <div class="round-dialog-actions"><button type="button" class="btn secondary" id="sectorResultClose">Fechar</button></div>
   </dialog>
   <script src="config.js"></script><script src="app.js"></script>

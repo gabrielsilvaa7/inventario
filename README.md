@@ -1,5 +1,15 @@
 # Inventário Friovix — GitHub Pages + Google Apps Script
 
+## v14 — Interface mais limpa
+
+- Removidos textos explicativos redundantes nas abas **Contagem**, **Dashboard**, **Supervisão** e **Administração**, mantendo instruções curtas apenas quando orientam uma ação ou previnem um erro.
+- Card de indicadores sem subtítulos; progresso e rótulos de produtos mais concisos; retirado o painel repetido de instruções de relatórios na Supervisão (o clique em **Próxima etapa / Resultado** continua abrindo a janela de arquivos).
+- Campos e avisos de Contagem simplificados; **confirmação antes do registro**, validação de etiqueta, conferentes, posição, unidade e quantidade permanecem inalteradas.
+- Avisos essenciais de segurança mantidos: quantidade zero, **OFICIAL irreversível**, limpeza de TESTE e confirmação de encerramento/reabertura de rodada.
+- Ajustes leves de espaço e espaçamento para evitar excesso visual, incluindo visualização móvel. Nenhuma alteração no backend, permissões, dados SAP ou planilhas.
+
+**Publicação:** somente `index.html`, `app.js` e `styles.css` no GitHub Pages. **Não é necessário reimplantar o Apps Script** para essa versão; atualize a página (`Ctrl+F5`) após a publicação.
+
 ## Atualização v13 — Unidade de Medida na Contagem
 
 Na aba **Contagem**, o campo obrigatório **Unidade de Medida** aparece como lista suspensa **à esquerda de Quantidade Contada**. As opções são as UMs **distintas** encontradas na base SAP do inventário ativo, incluindo todos os centros e depósitos; não são valores digitados livremente.

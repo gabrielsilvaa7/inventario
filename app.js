@@ -90,10 +90,10 @@ function paintEnvironment(data){
   $('officialModeButton').disabled=oficial||data.limpeza_pendente;
   $('clearTestDataButton').disabled=oficial;
   $('modeInfo').textContent=oficial
-    ?'INVENTÁRIO OFICIAL ATIVO. Nenhum registro pode ser apagado pela função de limpeza. Não é possível voltar ao modo TESTE.'
+    ?'Modo OFICIAL · limpeza bloqueada permanentemente.'
     :data.limpeza_pendente
     ?'Limpeza interrompida. Execute novamente a limpeza para liberar as operações.'
-    :'MODO TESTE ATIVO. Você pode simular as três rodadas e reiniciar a contagem quantas vezes precisar.';
+    :'Modo TESTE · registros podem ser apagados.';
   const n=data.quantidades;
   $('environmentMetrics').innerHTML=[['Contagens',n.contagens],['Resultados',n.resultados],['Aprovações',n.aprovacoes],['Rodadas',n.rodadas]].map(x=>`<div><strong>${num(x[1])}</strong><span>${safe(x[0])}</span></div>`).join('');
   renderModeBadge(data.modo);
@@ -203,7 +203,7 @@ function resetProduct(){
   state.product=null;state.requestId=null;$('saveCount').disabled=true;
   renderUnidadesMedida();
   $('productInfo').className='product-card muted';
-  $('productInfo').textContent='Busque um produto no centro e depósito selecionados.';
+  $('productInfo').textContent='Busque um produto.';
 }
 function centrosDisponiveis(){
   return [...new Set((state.context?.setores||[]).map(x=>String(x.centro)))].sort((a,b)=>a.localeCompare(b,'pt-BR',{numeric:true}));
@@ -309,7 +309,7 @@ function localSuggestions(catalog,term){
 function paintSuggestions(items){
   state.suggestions=items;state.suggestionActive=-1;
   const list=$('productSuggestions');
-  list.innerHTML=items.length?items.map((x,i)=>`<button type="button" role="option" id="productSuggestion${i}" aria-selected="false" data-suggest-code="${safe(x.codigo)}" class="suggestion"><strong>${safe(x.codigo)}</strong><span>${safe(x.descricao)}</span><small>${safe(x.um)}</small></button>`).join(''):'<div class="suggestion-empty">Nenhum produto disponível nesta rodada.</div>';
+  list.innerHTML=items.length?items.map((x,i)=>`<button type="button" role="option" id="productSuggestion${i}" aria-selected="false" data-suggest-code="${safe(x.codigo)}" class="suggestion"><strong>${safe(x.codigo)}</strong><span>${safe(x.descricao)}</span><small>${safe(x.um)}</small></button>`).join(''):'<div class="suggestion-empty">Nenhum produto disponível.</div>';
   list.hidden=false;$('productCode').setAttribute('aria-expanded','true');
 }
 function queueSuggestions(){
@@ -362,16 +362,16 @@ function paintFollowup(data){
   state.productPage=data.pagina;
   const fmtPercent=n=>String(n||0)+'%';
   $('progressOverview').innerHTML=`
-    <div class="progress-tile"><span>Produtos dos depósitos selecionados</span><strong>${num(data.total)}</strong></div>
-    <div class="progress-tile"><span>Contagem iniciada</span><strong>${num(data.contados)} <small>(${fmtPercent(data.progresso)})</small></strong><div class="progress-track"><div class="progress-fill started" style="width:${data.progresso}%"></div></div></div>
-    <div class="progress-tile"><span>Contagem concluída</span><strong>${num(data.concluidos)} <small>(${fmtPercent(data.conclusao)})</small></strong><div class="progress-track"><div class="progress-fill completed" style="width:${data.conclusao}%"></div></div></div>
-    <div class="progress-tile"><span>Estoque batendo</span><strong>${num(data.batendo)}</strong><small>${num(data.divergentes)} divergentes após 3 rodadas</small></div>`;
+    <div class="progress-tile"><span>Produtos</span><strong>${num(data.total)}</strong></div>
+    <div class="progress-tile"><span>Iniciados</span><strong>${num(data.contados)} <small>(${fmtPercent(data.progresso)})</small></strong><div class="progress-track"><div class="progress-fill started" style="width:${data.progresso}%"></div></div></div>
+    <div class="progress-tile"><span>Concluídos</span><strong>${num(data.concluidos)} <small>(${fmtPercent(data.conclusao)})</small></strong><div class="progress-track"><div class="progress-fill completed" style="width:${data.conclusao}%"></div></div></div>
+    <div class="progress-tile"><span>Batendo</span><strong>${num(data.batendo)}</strong></div>`;
   $('followupBody').innerHTML=data.itens.length?data.itens.map(x=>`<tr>
     <td><strong>${safe(x.codigo)}</strong></td><td class="product-description">${safe(x.descricao)}</td><td>${safe(x.centro)}</td><td>${safe(x.deposito||'—')}</td>
     ${x.rodadas.map((s,i)=>`<td>${roundCell(s,i)}</td>`).join('')}
     <td><span class="final-status ${safe(x.tipo)}">${safe(x.situacao)}</span></td>
-  </tr>`).join(''):'<tr><td colspan="8" class="empty">Nenhum produto encontrado para este filtro.</td></tr>';
-  $('followupCount').textContent=`${num(data.total_filtrado)} produtos encontrados · Exibindo até 50 por página`;
+  </tr>`).join(''):'<tr><td colspan="8" class="empty">Nenhum produto encontrado.</td></tr>';
+  $('followupCount').textContent=`${num(data.total_filtrado)} produtos · até 50 por página`;
   $('followupPage').textContent=`Página ${num(data.pagina)} de ${num(data.total_paginas)}`;
   $('followupPrev').disabled=data.pagina<=1;
   $('followupNext').disabled=data.pagina>=data.total_paginas;
@@ -380,7 +380,7 @@ function paintFollowup(data){
 async function searchProduct(event){event.preventDefault();hideSuggestions();const button=$('searchForm').querySelector('button');btnBusy(button,true,'Buscando...');resetProduct();try{
   const scope=currentSector();const codigo=$('productCode').value.trim();if(!codigo)throw Error('Informe o código do produto.');
   const product=await api('consultarProduto',{...scope,codigo});state.product=product;
-  $('productInfo').className='product-card';$('productInfo').innerHTML=`<strong>${safe(product.descricao)}</strong><div class="meta">Código ${safe(product.codigo)} · Centro ${safe(product.centro)} · Depósito ${safe(product.deposito)} · Unidade ${safe(product.um)}</div><span class="pill">Rodada ${safe(product.rodada_numero)}</span>`;
+  $('productInfo').className='product-card';$('productInfo').innerHTML=`<strong>${safe(product.descricao)}</strong><div class="meta">${safe(product.codigo)} · C ${safe(product.centro)} / D ${safe(product.deposito)} · ${safe(product.um)}</div><span class="pill">Rodada ${safe(product.rodada_numero)}</span>`;
   renderUnidadesMedida(product.um);$('saveCount').disabled=false;$('quantity').focus();
 }catch(err){toast(err.message,'error');}finally{btnBusy(button,false);}}
 /** A gravação acontece exclusivamente após a confirmação da ficha exibida no modal. */
@@ -455,21 +455,20 @@ async function confirmarContagem(){
   countDialogBusy=true;
   const button=$('countConfirmSave'),status=$('countConfirmStatus');
   btnBusy(button,true,'Registrando…');$('countConfirmCancel').disabled=true;
-  status.hidden=false;$('countConfirmStatusText').textContent='Gravando as informações da ficha. Não feche esta janela.';
+  status.hidden=false;$('countConfirmStatusText').textContent='Registrando contagem…';
   try{
     // O request_id permanece estável caso uma falha de rede exija repetir a confirmação.
     const saved=await api('salvarContagem',{...d,request_id:state.requestId},180000);
     $('lastSaved').hidden=false;
-    $('lastSaved').textContent=(saved.duplicado?'Lançamento já recebido anteriormente.':'Lançamento registrado com sucesso!')
-      +' Etiqueta Nº '+d.etiqueta+' · Data '+d.data_contagem+' · Conferentes '+d.primeiro_conferente+' e '+d.segundo_conferente
-      +' · Produto '+d.codigo+' · '+d.quantidade+' '+d.um+' · Rua '+(d.rua||'—')
-      +' / Zona '+(d.zona||'—')+' / Posição '+(d.posicao||'—')+' / Palete '+(d.palete||'—')+'.';
+    $('lastSaved').textContent=(saved.duplicado?'Ficha já registrada.':'Ficha registrada!')
+      +' Etiqueta '+d.etiqueta+' · Produto '+d.codigo+' · '+d.quantidade+' '+d.um
+      +(d.posicao?' · Posição '+d.posicao:'');
     state.dashboard=null;state.requestId=null;pendingCount=null;
     $('countConfirmDialog').close();
     $('quantity').value='';$('countTag').value='';$('countTag').focus();
     toast(saved.duplicado?'Contagem anteriormente registrada. Nenhum lançamento duplicado.':'Ficha registrada e auditada com sucesso!','success');
   }catch(err){
-    $('countConfirmStatusText').textContent='Não foi possível confirmar o resultado. Confira a mensagem antes de tentar novamente.';
+    $('countConfirmStatusText').textContent='Falha no registro. Verifique o erro.';
     toast('Contagem não confirmada: '+err.message,'error');
   }finally{
     countDialogBusy=false;btnBusy(button,false);$('countConfirmCancel').disabled=false;
@@ -493,7 +492,7 @@ function paintGauge(progresso){
   const data=progresso||{total:0,contados:0,percentual:0};
   const pct=Math.max(0,Math.min(100,Number(data.percentual)||0));
   $('gaugePercent').textContent=pct.toLocaleString('pt-BR',{maximumFractionDigits:1})+'%';
-  $('gaugeFraction').textContent=num(data.contados)+' de '+num(data.total)+' produtos contados';
+  $('gaugeFraction').textContent=num(data.contados)+' / '+num(data.total)+' produtos';
   // Cada segmento começa onde o anterior termina: não há arredondamento da ponta direita em 0%.
   for(const zone of [{id:'gaugeZoneLow',start:0,end:35},{id:'gaugeZoneMid',start:35,end:65},{id:'gaugeZoneHigh',start:65,end:100}]){
     $(''+zone.id).setAttribute('d',gaugeArc(zone.start,Math.min(pct,zone.end)));
@@ -523,7 +522,7 @@ function renderRecountExports(){
   $('exportRound2').textContent='Exportar';
   $('exportRound3').textContent='Exportar';
   if(available){
-    $('recountExportHint').textContent='Lista da '+n+'ª contagem · '+num(total)+' produtos divergentes · Centro '+center+' · Depósito '+(depot||'Não informado')+'. Sem saldo SAP.';
+    $('recountExportHint').textContent=n+'ª contagem · '+num(total)+' produtos · Sem saldo SAP';
   }
 }
 /** Impede que descrições sejam interpretadas como fórmulas por programas de planilha. */
@@ -562,22 +561,22 @@ async function exportarRecontagem(numeroRodada,button){
 function paintScopedIndicators(metricas){
   const m=metricas||{total:0,contados:0,batendo:0,divergentes:0,percentual:0};
   const cards=[
-    {nome:'Produtos Contados',quantidade:m.contados,classe:'counted',detalhe:'Produtos distintos com lançamento'},
-    {nome:'Produtos Batendo',quantidade:m.batendo,classe:'passed',detalhe:'Conferidos em rodada encerrada'},
-    {nome:'Produtos Divergente',quantidade:m.divergentes,classe:'failed',detalhe:'Divergentes após a 3ª contagem'},
-    {nome:'Etiquetas Registradas',quantidade:m.etiquetas||0,classe:'tags',detalhe:'Etiquetas distintas digitadas no sistema'}
+    {nome:'Produtos Contados',quantidade:m.contados,classe:'counted'},
+    {nome:'Produtos Batendo',quantidade:m.batendo,classe:'passed'},
+    {nome:'Produtos Divergente',quantidade:m.divergentes,classe:'failed'},
+    {nome:'Etiquetas Registradas',quantidade:m.etiquetas||0,classe:'tags'}
   ];
-  $('stats').innerHTML=cards.map(c=>`<div class="stat stat-${c.classe}"><span>${safe(c.nome)}</span><strong>${num(c.quantidade)}</strong><small>${safe(c.detalhe)}</small></div>`).join('');
+  $('stats').innerHTML=cards.map(c=>`<div class="stat stat-${c.classe}"><span>${safe(c.nome)}</span><strong>${num(c.quantidade)}</strong></div>`).join('');
   paintGauge(m);
 }
 function sectorRecommendation(round){
-  if(round.status==='REABRINDO')return {classe:'active',texto:'Reabertura em andamento',nota:'Aguardando conclusão'};
-  if(round.status!=='ENCERRADA')return {classe:'active',texto:'Em contagem',nota:'Finalize todos os produtos da rodada'};
+  if(round.status==='REABRINDO')return {classe:'active',texto:'Reabrindo',nota:'Aguarde'};
+  if(round.status!=='ENCERRADA')return {classe:'active',texto:'Em contagem',nota:'Rodada aberta'};
   const divergentes=Number(round.divergentes_na_rodada)||0;
-  if(divergentes===0)return {classe:'passed',texto:'Estoque Batendo',nota:'Nenhuma divergência nesta rodada'};
-  if(Number(round.numero)===1)return {classe:'warning',texto:'Segunda Contagem',nota:num(divergentes)+' produtos para recontagem'};
-  if(Number(round.numero)===2)return {classe:'warning',texto:'Terceira Contagem',nota:num(divergentes)+' produtos para recontagem'};
-  return {classe:'failed',texto:'Estoque Divergente',nota:num(divergentes)+' produtos com divergência final'};
+  if(divergentes===0)return {classe:'passed',texto:'Estoque Batendo',nota:'Sem divergências'};
+  if(Number(round.numero)===1)return {classe:'warning',texto:'Segunda Contagem',nota:num(divergentes)+' divergentes'};
+  if(Number(round.numero)===2)return {classe:'warning',texto:'Terceira Contagem',nota:num(divergentes)+' divergentes'};
+  return {classe:'failed',texto:'Estoque Divergente',nota:num(divergentes)+' divergentes'};
 }
 
 /** CSV UTF-8 para Excel, mantendo valores numéricos e protegendo textos que parecem fórmulas. */
@@ -649,7 +648,7 @@ function mostrarResultadoSetor(centro,deposito){
   sectorDialogRow=row;
   const display=sectorRecommendation(row);
   $('sectorResultTitle').textContent=display.texto;
-  $('sectorResultDescription').textContent='Confira as opções do centro e depósito selecionados. A lista da próxima rodada contém apenas códigos divergentes, sem quantidades SAP.';
+  $('sectorResultDescription').textContent='Baixe listas e relatórios deste depósito.';
   $('sectorResultContext').innerHTML='<strong>Centro '+safe(row.centro)+' · Depósito '+safe(row.deposito||'Não informado')+'</strong>'
     +'<span>'+safe(row.numero)+'ª contagem · '+safe(row.status)+'</span>';
   const n=proximaListaDoSetor(row);
@@ -710,7 +709,7 @@ function pintarTabelaSupervisao(data){
       ?`<div class="round-actions">${r.numero<3&&hasDifferences?`<button class="btn secondary action-small" data-open="${safe(r.centro)}|${safe(r.deposito)}">Próxima rodada</button>`:''}${r.pode_reabrir?`<button class="btn outline-reopen action-small" data-reopen="${safe(r.rodada_id)}" title="Reabrir a contagem mantendo o histórico">Reabrir</button>`:''}${!r.pode_reabrir&&(!hasDifferences||r.numero===3)?'<span class="tiny">Concluído</span>':''}</div>`:'—';
 
     const progress=`<div class="sector-progress" role="progressbar" aria-label="Progresso da ${num(r.numero)}ª contagem" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><div class="sector-progress-top"><strong>${percent}%</strong><span>${num(r.produtos_registrados)} de ${num(r.total_alvo)} produtos</span></div><div class="sector-progress-track"><div class="sector-progress-fill ${percent===100?'complete':''}" style="width:${percent}%"></div></div></div>`;
-    const recommendation=`<button type="button" class="sector-recommendation sector-result-trigger ${indicador.classe}" data-sector-result-center="${safe(r.centro)}" data-sector-result-depot="${safe(r.deposito)}" aria-label="Abrir listas e relatórios do centro ${safe(r.centro)}, depósito ${safe(r.deposito)}: ${safe(indicador.texto)}"><span class="sector-recommendation-dot" aria-hidden="true"></span><span class="sector-result-content"><strong>${safe(indicador.texto)}</strong><small>${safe(indicador.nota)}</small><small class="sector-result-action">Ver listas e relatórios <span aria-hidden="true">↗</span></small></span></button>`;
+    const recommendation=`<button type="button" class="sector-recommendation sector-result-trigger ${indicador.classe}" data-sector-result-center="${safe(r.centro)}" data-sector-result-depot="${safe(r.deposito)}" aria-label="Abrir listas e relatórios do centro ${safe(r.centro)}, depósito ${safe(r.deposito)}: ${safe(indicador.texto)}"><span class="sector-recommendation-dot" aria-hidden="true"></span><span class="sector-result-content"><strong>${safe(indicador.texto)}</strong><small>${safe(indicador.nota)}</small><small class="sector-result-action">Ver arquivos <span aria-hidden="true">↗</span></small></span></button>`;
     return `<tr><td><strong>${safe(r.centro)}</strong></td><td>${safe(r.deposito)}</td><td>${safe(r.numero)}ª</td><td><span class="tag ${r.status==='ABERTA'?'warn':'end'}">${safe(r.status)}</span></td><td>${progress}</td><td>${num(r.faltando_total)}${r.faltando_total?'<div class="tiny">Ex.: '+safe(r.produtos_faltando.slice(0,3).join(', '))+'</div>':''}</td><td>${recommendation}</td><td>${action}</td></tr>`;
   }).join(''):'<tr><td colspan="8" class="empty">Nenhum setor disponível.</td></tr>';
 
@@ -718,7 +717,7 @@ function pintarTabelaSupervisao(data){
 
 function paintDashboard(data){state.dashboard=data;
   paintScopedIndicators(data.metricas);renderRecountExports();
-  $('locationCount').textContent=`${num(data.total_enderecos_filtrados)} endereços encontrados. Exibindo até 400 resultados; refine os filtros se necessário.`;
+  $('locationCount').textContent=num(data.total_enderecos_filtrados)+' endereços'+(Number(data.total_enderecos_filtrados)>400?' · exibindo 400':'');
   $('locationsBody').innerHTML=data.enderecos.length?data.enderecos.map(x=>`<tr><td><strong>${safe(x.codigo)}</strong></td><td class="locator-description">${safe(x.descricao)}</td><td class="locator-quantity-cell"><strong class="locator-quantity-value">${num(x.quantidade)}</strong></td><td>${safe(x.centro)}</td><td>${safe(x.deposito)}</td><td>${safe(x.rua)}</td><td>${safe(x.zona)}</td><td>${safe(x.posicao)}</td><td>${safe(x.palete)}</td><td>${safe(x.rodada)}</td></tr>`).join(''):'<tr><td colspan="10" class="empty">Nenhum material encontrado nos filtros escolhidos.</td></tr>';
   pintarTabelaSupervisao(data);
   paintFollowup(data.acompanhamento);
@@ -807,10 +806,10 @@ function showRoundDialog(kind,ref){
   const title={close:'Encerrar rodada',open:'Iniciar próxima rodada',reopen:'Reabrir rodada'}[kind];
   const number=kind==='open'?Number(row.numero)+1:Number(row.numero);
   const detail=kind==='close'
-    ?'Confirma o encerramento da '+number+'ª contagem? Após confirmar, o sistema consolidará as quantidades e bloqueará novos lançamentos até uma nova rodada ou reabertura.'
+    ?'Encerrar a '+number+'ª contagem? Novos lançamentos serão bloqueados.'
     :kind==='open'
-    ?'Confirma a abertura da '+number+'ª contagem? Somente os materiais divergentes da rodada anterior serão liberados.'
-    :'Confirma a reabertura da '+number+'ª contagem? Os lançamentos existentes serão preservados e os resultados anteriores ficarão no histórico.';
+    ?'Iniciar a '+number+'ª contagem dos materiais divergentes?'
+    :'Reabrir a '+number+'ª contagem? O histórico será preservado.';
   $('roundDialogTitle').textContent=title;
   $('roundDialogText').textContent=detail;
   $('roundDialogUser').textContent=state.usuario.nome+' ('+state.usuario.usuario+')';
@@ -833,7 +832,7 @@ async function confirmRoundAction(){
   const button=$('roundDialogConfirm'),status=$('roundDialogStatus');
   const labels={close:'Encerrando rodada…',reopen:'Reabrindo rodada…',open:'Abrindo próxima rodada…'};
   btnBusy(button,true,labels[kind]);$('roundDialogCancel').disabled=true;
-  status.hidden=false;$('roundDialogStatusText').textContent=labels[kind]+' Atualizando a tela ao concluir.';
+  status.hidden=false;$('roundDialogStatusText').textContent=labels[kind];
   try{
     let result;
     if(kind==='close')result=await api('encerrarRodada',{rodada_id:row.rodada_id},180000);
@@ -883,7 +882,7 @@ async function refreshCounterPermissions(){
   try{
     state.counterPermissions=await api('listarPermissoesContadores');
     renderCounterPermissions();
-  }catch(err){toast('Permissões: '+err.message,'error');$('counterPermissionList').innerHTML='<p class="hint">Não foi possível carregar os contadores.</p>';}
+  }catch(err){toast('Permissões: '+err.message,'error');$('counterPermissionList').innerHTML='<p class="hint">Falha ao carregar apontadores.</p>';}
   finally{btnBusy(button,false);$('counterPermissionStatus').hidden=true;state.counterPermissionsLoading=false;}
 }
 async function changeCounterPermission(event){
