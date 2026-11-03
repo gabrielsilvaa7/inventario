@@ -1,11 +1,11 @@
-# Atualização da Base SAP — Inventário Friovix
+# Atualização da Base SAP — Sistema de Inventário
 
 ## Finalidade
 A aba **Administração** oferece dois botões: **Verificar alterações** e **Atualizar Base SAP**. O sistema consulta a aba `Data` da planilha definida em `SAP_SOURCE_ID` nas propriedades privadas do Apps Script. A planilha de origem **nunca é alterada** pelo recurso.
 
 ## Como utilizar
 1. Substitua/atualize os dados da aba `Data` da planilha SAP de origem, preservando as 12 colunas e seus cabeçalhos.
-2. Entre como **ADMIN** no Inventário Friovix e confirme que o modo é **TESTE**.
+2. Entre como **ADMIN** no Sistema de Inventário e confirme que o modo é **TESTE**.
 3. Se já fez contagens ou encerrou rodadas de teste, utilize primeiro **Apagar registros de teste**. Esta ação é separada e irreversível, por isso confira antes os dados e as condições.
 4. Clique em **Verificar alterações**. Serão mostrados os números de SKUs novos, alterados e removidos, além de mudanças de saldo/descrição e centros/depósitos.
 5. Revise a prévia. Se não houver impedimentos, clique em **Atualizar Base SAP** e digite **ATUALIZAR BASE SAP** na confirmação.

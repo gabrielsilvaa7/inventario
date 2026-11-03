@@ -22,7 +22,7 @@
 .btn.danger{background:#b43f32;color:#fff;flex-shrink:0}
 @media(max-width:600px){.mode-choice{grid-template-columns:1fr}.test-cleanup{flex-direction:column;align-items:stretch}.environment-metrics{grid-template-columns:repeat(2,1fr)}.header-actions{gap:6px}.header-actions .mode-badge{padding:4px 6px;font-size:.65rem}}
 
-/* Inventário Friovix — acompanhamento de rodadas por produto e busca inteligente */
+/* Sistema de Inventário — acompanhamento de rodadas por produto e busca inteligente */
 .product-lookup{position:relative}
 .product-lookup .input-action{width:100%}
 .suggestions{position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;z-index:30;max-height:310px;overflow-y:auto;border:1px solid #bfcde0;border-radius:11px;box-shadow:0 15px 40px #17294330}
@@ -65,8 +65,8 @@
 @media(max-width:600px){.progress-overview{gap:9px}.progress-tile{padding:12px}.progress-tile>strong{font-size:1.3rem}.followup-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.followup-filters label:nth-child(3){grid-column:span 2}.followup-filters button{grid-column:span 2}.followup-pagination{align-items:start}}
 
 /* Feedback claro para chamadas assíncronas e busca local. */
-@keyframes friovix-rotate{to{transform:rotate(360deg)}}
-.mini-spinner{width:16px;height:16px;border:2px solid #b9c9dc;border-top-color:#275b89;border-radius:50%;display:inline-block;flex:none;animation:friovix-rotate .75s linear infinite}
+@keyframes inventory-rotate{to{transform:rotate(360deg)}}
+.mini-spinner{width:16px;height:16px;border:2px solid #b9c9dc;border-top-color:#275b89;border-radius:50%;display:inline-block;flex:none;animation:inventory-rotate .75s linear infinite}
 .btn .mini-spinner{width:14px;height:14px;border-top-color:currentColor;border-left-color:transparent;margin-right:8px;vertical-align:-2px}
 .btn.primary .mini-spinner{border-color:#ffffff66;border-top-color:#fff}
 .btn.is-busy{cursor:progress;opacity:.85}
@@ -100,7 +100,7 @@
 @media(max-width:600px){.round-actions{flex-direction:column;align-items:stretch;min-width:130px}}
 
 
-/* Inventário Friovix — velocímetro global por SKU e listas cegas de recontagem */
+/* Sistema de Inventário — velocímetro global por SKU e listas cegas de recontagem */
 .gauge-panel{display:flex;align-items:center;justify-content:space-between;gap:28px;min-height:225px;background:linear-gradient(110deg,#fff 45%,#f0f5fb 100%)}
 .gauge-intro{max-width:670px}
 .gauge-intro h3{font-size:1.19rem;margin:0 0 10px}
@@ -122,7 +122,7 @@
 @media(max-width:440px){.recount-export-buttons{flex-direction:column;align-items:stretch}.recount-export-buttons .btn{width:100%}}
 
 
-/* Inventário Friovix v8 — velocímetro progressivo de 3 faixas e ponteiro. */
+/* Sistema de Inventário v8 — velocímetro progressivo de 3 faixas e ponteiro. */
 .gauge-panel{min-height:250px}
 .gauge-visual{width:290px;min-width:245px;height:auto;padding-bottom:5px}
 .gauge-svg{height:149px;overflow:visible}

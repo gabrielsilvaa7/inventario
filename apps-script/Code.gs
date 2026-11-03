@@ -1,4 +1,4 @@
-/** INVENTÁRIO FRIOVIX — Backend Google Apps Script v2
+/** SISTEMA DE INVENTÁRIO — Backend Google Apps Script v2
  * IMPORTANTE: configure as Propriedades do script antes de executar instalarProjeto().
  * Este script NÃO modifica a planilha SAP original.
  * Implantar como Aplicativo da Web > Executar como EU > Acesso QUALQUER PESSOA.
@@ -214,7 +214,7 @@ function instalarProjeto(){
   if(password.length<12)throw Error('ADMIN_PASSWORD precisa ter no mínimo 12 caracteres.');
   const source=SpreadsheetApp.openById(sourceId).getSheetByName('Data');if(!source)throw Error('Aba Data ausente na planilha SAP de origem.');
   const pepper=random_();props_().setProperty('AUTH_PEPPER',pepper);
-  const db=SpreadsheetApp.create('INVENTARIO FRIOVIX - BANCO DE DADOS');props_().setProperty('DB_SPREADSHEET_ID',db.getId());
+  const db=SpreadsheetApp.create('INVENTARIO - BANCO DE DADOS');props_().setProperty('DB_SPREADSHEET_ID',db.getId());
   const original=db.getSheets()[0];let first=true;
   for(const [name,headers] of Object.entries(SCHEMA)){
     const s=first?original:db.insertSheet(name);first=false;s.setName(name);
@@ -269,7 +269,7 @@ function setoresDaBaseSAP_(registros,inventoryId){
 function importarSAPInterno_(sourceId,source){
   const inv=uuid_(),parsed=lerBaseSAP_(source,inv);
   appendMany_('BASE_ESTOQUE',parsed.registros);
-  appendMany_('INVENTARIOS',[[inv,'Inventário Friovix 1025-1026',iso_(),'ATIVO',sourceId]]);
+  appendMany_('INVENTARIOS',[[inv,'Inventário Geral',iso_(),'ATIVO',sourceId]]);
   const setores=setoresDaBaseSAP_(parsed.registros,inv);
   appendMany_('RODADAS',setores);
   return {inventario_id:inv,itens:parsed.registros.length,duplicados:parsed.duplicados,setores:setores.length};
@@ -371,7 +371,7 @@ function atualizarBaseSAP(d){return withLock_(()=>{
 });}
 
 /** Apenas identificação do transporte (não revela informações SAP). */
-function ping(){return {ok:true,servico:'Inventário Friovix',versao:'2.0'};}
+function ping(){return {ok:true,servico:'Sistema de Inventário',versao:'2.0'};}
 function entrar(d){return withLock_(()=>{
   const user=norm_(d&&d.usuario),pass=str_(d&&d.senha);
   if(!user||!pass)throw Error('Informe usuário e senha.');
@@ -393,7 +393,7 @@ function sair(d){return withLock_(()=>{
 });}
 function sessaoAtual(d){return {usuario:auth_(d.token),inventario:activeInventory_().nome};}
 function carregarContexto(d){exigirSemLimpeza_();const u=auth_(d.token),inv=activeInventory_();const rounds=table_('RODADAS').filter(r=>r.inventario_id===inv.inventario_id);const grouping=new Map();for(const r of rounds){const k=r.centro+'|'+r.deposito,prev=grouping.get(k);if(!prev||Number(r.numero)>Number(prev.numero))grouping.set(k,r);}
-  return {usuario:u,inventario:{id:inv.inventario_id,nome:inv.nome},modo:modoOperacao_(),setores:[...grouping.values()].map(r=>({centro:String(r.centro),deposito:String(r.deposito),rodada_id:r.rodada_id,numero:Number(r.numero),status:r.status})).sort((a,b)=>a.centro.localeCompare(b.centro)||a.deposito.localeCompare(b.deposito))};}
+  return {usuario:u,inventario:{id:inv.inventario_id,nome:'Inventário Geral'},modo:modoOperacao_(),setores:[...grouping.values()].map(r=>({centro:String(r.centro),deposito:String(r.deposito),rodada_id:r.rodada_id,numero:Number(r.numero),status:r.status})).sort((a,b)=>a.centro.localeCompare(b.centro)||a.deposito.localeCompare(b.deposito))};}
 function consultarProduto(d){exigirSemLimpeza_();const u=auth_(d.token),inv=activeInventory_(),center=str_(d.centro),depot=str_(d.deposito),code=str_(d.codigo);
   const rounds=sector_(inv.inventario_id,center,depot),r=rounds[rounds.length-1];if(!r||r.status!=='ABERTA')throw Error('Não há rodada aberta para o centro/depósito escolhido.');
   const p=inventoryBase_(inv.inventario_id,center,depot).find(x=>str_(x.codigo)===code);if(!p)throw Error('Código não encontrado na base SAP deste centro e depósito.');
@@ -804,7 +804,7 @@ function painel(d){exigirSemLimpeza_();const u=auth_(d.token);requireSupervisor_
   const contagensSetor=counts.filter(x=>str_(x.centro)===centroEscopo&&(!depositoEscopo||str_(x.deposito)===depositoEscopo));
   const resultadosSetor=results.filter(x=>str_(x.centro)===centroEscopo&&(!depositoEscopo||str_(x.deposito)===depositoEscopo));
   const metricas=metricasProdutos_(baseSetor,contagensSetor,resultadosSetor);
-  return {usuario:u,inventario:{id:inv.inventario_id,nome:inv.nome},modo:modoOperacao_(),
+  return {usuario:u,inventario:{id:inv.inventario_id,nome:'Inventário Geral'},modo:modoOperacao_(),
     resumo:{total_skus:base.length,total_lancamentos:counts.length},
     progresso_geral:metricas,metricas,
     setores:sectorData.sort((a,b)=>String(a.centro).localeCompare(String(b.centro))||String(a.deposito).localeCompare(String(b.deposito))),
@@ -906,5 +906,5 @@ function doGet(e){
   const channel=str_(e&&e.parameter&&e.parameter.channel);
   if(!/^[a-zA-Z0-9_-]{12,100}$/.test(channel))return HtmlService.createHtmlOutput('A ponte exige um canal válido.');
   const tpl=HtmlService.createTemplateFromFile('Bridge');tpl.originJson=JSON.stringify(origin);tpl.channelJson=JSON.stringify(channel);
-  return tpl.evaluate().setTitle('Inventário Friovix — Ponte').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  return tpl.evaluate().setTitle('Sistema de Inventário — Ponte').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }

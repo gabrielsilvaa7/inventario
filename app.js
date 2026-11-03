@@ -1,4 +1,4 @@
-/* Inventário Friovix — Cliente GitHub Pages. Nenhum segredo é colocado neste arquivo. */
+/* Sistema de Inventário — Cliente GitHub Pages. Nenhum segredo é colocado neste arquivo. */
 'use strict';
 const $=id=>document.getElementById(id);
 const state={bridgeWindow:null,bridgeOrigin:'',channel:'',ready:false,pending:new Map(),token:sessionStorage.getItem('inventario_session')||'',usuario:null,context:null,product:null,dashboard:null,requestId:null,tab:'contagem',productPage:1,suggestionSequence:0,suggestionTimer:null,suggestions:[],suggestionActive:-1,catalogCache:new Map(),catalogPending:new Map(),catalogUnsupported:false,catalogSignature:'',dashboardLoading:false,dashboardQueued:'',followupSeq:0,followupTimer:null,sapBusy:false,sapPreview:null,counterPermissions:[],counterPermissionsLoading:false,supervisionCenter:'',unidadesMedida:[]};
@@ -539,7 +539,7 @@ function gerarCsvRecontagem(lista){
   const href=URL.createObjectURL(blob),link=document.createElement('a');
   const stamp=new Date().toISOString().slice(0,10).replace(/-/g,'');
   const key=s=>String(s).replace(/[^a-zA-Z0-9_-]/g,'_')||'SEM_DEP';
-  link.href=href;link.download='Friovix_'+lista.numero+'a_Contagem_C'+key(lista.centro)+'_D'+key(lista.deposito)+'_'+stamp+'.csv';
+  link.href=href;link.download='Inventario_'+lista.numero+'a_Contagem_C'+key(lista.centro)+'_D'+key(lista.deposito)+'_'+stamp+'.csv';
   document.body.appendChild(link);link.click();link.remove();
   setTimeout(()=>URL.revokeObjectURL(href),3000);
 }
@@ -610,7 +610,7 @@ async function exportarRelatorioInventario(tipo,centro,deposito,numero,button){
     const key=x=>String(x).replace(/[^A-Za-z0-9_-]/g,'_')||'SEM_DEP';
     const stamp=new Date().toISOString().slice(0,10).replace(/-/g,'');
     const label=tipo==='FINAL'?'FINAL':'RODADA_'+Number(numero);
-    const name='FRIOVIX_INVENTARIO_'+label+'_C'+key(centro)+'_D'+key(deposito)+'_'+stamp+'.csv';
+    const name='INVENTARIO_'+label+'_C'+key(centro)+'_D'+key(deposito)+'_'+stamp+'.csv';
     salvarCsvSeguro_(name,headers,rows,[9,10,11,12]);
     toast('Relatório '+(tipo==='FINAL'?'final':'da '+numero+'ª rodada')+' gerado com '+num(data.itens.length)+' produtos.','success');
   }catch(err){toast('Relatório de inventário: '+err.message,'error');}
@@ -626,7 +626,7 @@ async function exportarLocalizacoes(button){
     const rows=response.itens.map(x=>[x.codigo,x.descricao,x.um,x.centro,x.deposito,x.rua,
       x.zona,x.posicao,x.palete,x.quantidade,x.rodada]);
     const stamp=new Date().toISOString().slice(0,10).replace(/-/g,'');
-    salvarCsvSeguro_('FRIOVIX_LOCALIZADOR_'+stamp+'.csv',headers,rows,[9,10]);
+    salvarCsvSeguro_('LOCALIZADOR_'+stamp+'.csv',headers,rows,[9,10]);
     toast('Localizações exportadas: '+num(response.itens.length)+' endereços conforme os filtros.','success');
   }catch(err){toast('Exportação do localizador: '+err.message,'error');}
   finally{btnBusy(button,false);}
